@@ -218,3 +218,21 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local AI tooling and environments
+.claude/
+.cursor/
+.venv/
+.fdevenv/
+
+# Secrets (keep the template)
+.env.*
+!.env.example
+
+# Frontend
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# OS
+.DS_Store

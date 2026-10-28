@@ -1,0 +1,88 @@
+[project]
+name = "cold-chain-copilot"
+dynamic = ["version"]
+description = "Cold Chain Logistics Control Tower & AI Copilot: fleet telemetry, live weather, and SOP retrieval behind a hybrid DeepSeek LangGraph agent."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Balakrishnan" }]
+requires-python = ">=3.12,<3.13"
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "Framework :: FastAPI",
+    "Typing :: Typed",
+    "Private :: Do Not Upload",
+]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "psycopg[binary,pool]>=3.2",
+    "langgraph>=0.2.60",
+    "langchain-core>=0.3.30",
+    "langchain-openai>=0.3",
+    "openai>=1.60",
+    "pinecone>=6.0",
+    "httpx>=0.27",
+    "tenacity>=9.0",
+    "structlog>=24.4",
+    "typer>=0.15",
+    "pandas>=2.2",
+    "pypdf>=5.1",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pandas-stubs>=2.2",
+    "types-openpyxl>=3.1",
+]
+
+[project.scripts]
+fde-copilot = "cold_chain_copilot.cli:app"
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/cold_chain_copilot/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cold_chain_copilot"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["frontend"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "N", "S", "SIM", "C4", "RUF", "PT", "RET", "TID"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+plugins = ["pydantic.mypy"]
+warn_unreachable = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q --strict-markers"
+filterwarnings = ["error::DeprecationWarning:cold_chain_copilot.*"]
