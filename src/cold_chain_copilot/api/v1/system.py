@@ -30,6 +30,7 @@ from cold_chain_copilot.api.schemas import (
 from cold_chain_copilot.core.config import Settings
 from cold_chain_copilot.core.logging import get_logger
 from cold_chain_copilot.core.metrics import CounterName, DependencyName, metrics
+from cold_chain_copilot.ingestion.telemetry_simulator import TelemetrySimulator
 
 router = APIRouter(prefix="/system", tags=["ops"])
 logger = get_logger(__name__)
@@ -306,6 +307,26 @@ def guardrail_inventory(settings: Settings, max_sessions: int) -> list[Guardrail
     ]  # fmt: skip
 
 
+def _telemetry_feed(simulator: TelemetrySimulator | None) -> ComponentStatus:
+    key, name = "telemetry_feed", "Telemetry feed"
+    if simulator is None:
+        return _status(
+            key, name, "unknown", "static seed: pings age until ingest-db or TELEMETRY_SIMULATOR"
+        )
+    heartbeat = simulator.status()
+    if heartbeat.error:
+        return _status(key, name, "degraded", f"heartbeat failing ({heartbeat.error[:80]})")
+    if heartbeat.last_tick_utc is None:
+        return _status(key, name, "unknown", "simulated heartbeat starting")
+    return _status(
+        key,
+        name,
+        "ok",
+        f"simulated heartbeat every {heartbeat.interval_s}s · {heartbeat.rows} pings at "
+        f"{heartbeat.last_tick_utc:%H:%M:%S} UTC",
+    )
+
+
 def _overall(components: list[ComponentStatus]) -> ComponentState:
     if any(c.key.startswith("database") and c.status == "down" for c in components):
         return "down"
@@ -355,6 +376,7 @@ def system_status(runtime: RuntimeDep) -> SystemStatus:
             + ("" if audit.running else " · writer stopped"),
         )
     )
+    components.append(_telemetry_feed(runtime.simulator))
     copilot = runtime.copilot
     components.append(
         _status(

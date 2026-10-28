@@ -17,6 +17,7 @@ from cold_chain_copilot.core.logging import get_logger
 from cold_chain_copilot.core.metrics import metrics
 from cold_chain_copilot.db.audit import AuditLogger
 from cold_chain_copilot.db.pool import DatabasePools
+from cold_chain_copilot.ingestion.telemetry_simulator import TelemetrySimulator
 
 logger = get_logger(__name__)
 
@@ -108,6 +109,7 @@ class AppRuntime:
     audit: AuditLogger
     copilot: CopilotAgent
     guards: ChatGuards = field(default_factory=ChatGuards.create)
+    simulator: TelemetrySimulator | None = None
 
 
 def get_runtime(request: Request) -> AppRuntime:

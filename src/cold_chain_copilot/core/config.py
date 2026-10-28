@@ -107,6 +107,11 @@ class Settings(BaseSettings):
     forwarded_allow_ips: str = "127.0.0.1"  # proxies trusted for X-Forwarded-For
     health_probe_ttl_seconds: float = Field(default=60.0, ge=5, le=3600)
 
+    # Demo telemetry heartbeat (see ingestion/telemetry_simulator.py). Off by default: never
+    # enable it where real telemetry writes to public.legacy_fleet_shipments.
+    telemetry_simulator: bool = False
+    telemetry_simulator_interval_seconds: int = Field(default=60, ge=10, le=3600)
+
     data_dir: Path = Path("data")
     frontend_dist: Path = Path("frontend/dist")
 

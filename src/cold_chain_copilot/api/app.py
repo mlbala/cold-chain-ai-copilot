@@ -24,6 +24,7 @@ from cold_chain_copilot.core.logging import configure_logging, get_logger
 from cold_chain_copilot.core.metrics import metrics
 from cold_chain_copilot.db.audit import AuditLogger
 from cold_chain_copilot.db.pool import DatabasePools
+from cold_chain_copilot.ingestion.telemetry_simulator import TelemetrySimulator
 
 logger = get_logger(__name__)
 
@@ -73,7 +74,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         pools.open()
         audit = AuditLogger(pools.ro)
         audit.start()
+        simulator: TelemetrySimulator | None = None
         try:
+            if settings.telemetry_simulator:
+                simulator = TelemetrySimulator(
+                    pools.admin, interval_s=settings.telemetry_simulator_interval_seconds
+                )
+                simulator.start()
             copilot = build_copilot(settings, pools.ro, audit)
             app.state.runtime = AppRuntime(
                 settings=settings,
@@ -81,6 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 audit=audit,
                 copilot=copilot,
                 guards=ChatGuards.from_settings(settings),
+                simulator=simulator,
             )
             logger.info(
                 "startup_complete",
@@ -92,6 +100,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             app.state.runtime = None
+            if simulator is not None:
+                simulator.stop()
             audit.stop()
             pools.close()
             logger.info("shutdown_complete")

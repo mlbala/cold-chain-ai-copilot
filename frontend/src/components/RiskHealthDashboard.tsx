@@ -429,7 +429,8 @@ export default function RiskHealthDashboard({ onAsk }: { onAsk: (text: string) =
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
             Telemetry is stale: the newest truck ping is {freshest} minutes old, so every shipment carries a telemetry-gap
-            factor. The seed data has no live feed; run <code className="font-mono">make ingest-db</code> to refresh it.
+            factor. The seed data has no live feed. Run <code className="font-mono">make ingest-db</code> to refresh it once,
+            or set <code className="font-mono">TELEMETRY_SIMULATOR=true</code> to keep pings current.
           </span>
         </div>
       ) : null}

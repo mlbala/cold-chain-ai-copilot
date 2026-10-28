@@ -188,6 +188,7 @@ For frontend development, run `make serve` in one terminal and `make frontend-de
 | `SQL_MAX_FIX_ATTEMPTS`, `SQL_ROW_LIMIT`, `SQL_STATEMENT_TIMEOUT_MS`, `AGENT_MAX_TOOL_CALLS` | Agent guardrails. |
 | `CHAT_RATE_LIMIT_PER_MINUTE`, `CHAT_MAX_CONCURRENT`, `LLM_DAILY_BUDGET_USD` | API guardrails on `/chat`: 12 per minute, 4 concurrent, $5 per day. A budget of `0` disables the cap. |
 | `FORWARDED_ALLOW_IPS`, `HEALTH_PROBE_TTL_SECONDS` | Trusted proxy addresses (default `127.0.0.1`) and the health-probe cache (default 60 s). |
+| `TELEMETRY_SIMULATOR`, `TELEMETRY_SIMULATOR_INTERVAL_SECONDS` | Demo heartbeat that keeps seed pings current (default off, 60 s). It only updates `last_updated_utc`. Keep it off wherever real telemetry feeds the table. |
 
 `.env.example` documents every variable.
 
@@ -292,6 +293,12 @@ data/                           raw/fleet_telemetry.csv, policy/cold_chain_sop_v
 ```
 
 ## Operational notes
+
+- **Telemetry freshness.** The seed fleet has no live feed, so pings age, and after 20 minutes every truck picks up a telemetry-gap risk factor. You have two options:
+  - Run `make ingest-db` to refresh the pings once.
+  - Set `TELEMETRY_SIMULATOR=true` to keep them current. The API then refreshes active shipments' `last_updated_utc` every interval, staggered over the last few minutes.
+
+  The heartbeat changes nothing else, so the 25 / 4 / 2 scenario and the risk scores stay stable. It writes through the admin pool, because the agent role has no UPDATE privilege by design. Its state appears as **Telemetry feed** under System health.
 
 - **Conversation memory** uses LangGraph's in-memory checkpointer. It is scoped per `session_id`, keeps the last 500 sessions (least recently used are evicted first) and resets on restart. This matches the single-worker t3.micro footprint. For multi-instance deployments, swap in a Postgres checkpointer.
 - **The cost-savings tile** reflects the current process lifetime. When output-token prices are not configured, it compares input-token cost only, and the UI says so.
