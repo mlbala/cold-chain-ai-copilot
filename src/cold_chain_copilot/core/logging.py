@@ -54,7 +54,7 @@ def configure_logging(
         uvicorn_logger = logging.getLogger(name)
         uvicorn_logger.handlers.clear()
         uvicorn_logger.propagate = True
-    for noisy in ("httpx", "httpcore", "openai", "urllib3"):
+    for noisy in ("httpx", "httpcore", "openai", "urllib3", "psycopg"):
         logging.getLogger(noisy).setLevel(max(log_level, logging.WARNING))
 
 
