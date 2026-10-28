@@ -51,4 +51,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
     CMD ["python", "-c", "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=4).status == 200 else 1)"]
 
-CMD ["fde-copilot", "serve"]
+# Bind address and port are pinned here, not taken from the environment: an env file copied
+# from a laptop (HOST=127.0.0.1) would otherwise make the server unreachable outside the
+# container. The HEALTHCHECK above relies on port 8000.
+CMD ["fde-copilot", "serve", "--host", "0.0.0.0", "--port", "8000"]

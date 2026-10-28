@@ -212,6 +212,8 @@ The `Dockerfile` has three stages:
 2. `astral-sh/uv` runs a locked, non-editable install.
 3. A `python:3.12-slim` runtime runs as non-root on `:8000`, with a `HEALTHCHECK`.
 
+Before deploying, test the image locally with the same flags EC2 uses: `make docker-build && make docker-run`, then open http://localhost:8000. The container always binds `0.0.0.0:8000` regardless of `HOST`/`PORT` in the env file. Measured locally, a live copilot turn peaked at about 130 MiB of the 700 MiB cap.
+
 `.github/workflows/deploy.yml` runs on manual dispatch or on `v*.*.*` tags, never on branch pushes. It works like this:
 1. It builds a `linux/amd64` image and pushes it to GHCR.
 2. **Swap check.** A t3.micro has only 1 GB of RAM, so the job SSHes in and confirms at least 2 GB of swap.

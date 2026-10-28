@@ -64,8 +64,9 @@ ingest: setup-rbac ingest-db ingest-sops ## Full data bootstrap in dependency or
 docker-build: ## Build the 3-stage production image
 	docker build -t $(IMAGE) .
 
-docker-run: ## Run the image with .env on :8000
-	docker run --rm -it --env-file .env -e HOST=0.0.0.0 -p 8000:8000 --memory 700m $(IMAGE)
+docker-run: ## Run the image on :8000 with .env, using the same flags as the EC2 deploy
+	docker run --rm -it --env-file .env -e APP_ENV=production -e LOG_FORMAT=json \
+		-p 8000:8000 --memory 700m --memory-swap 1500m $(IMAGE)
 
 clean: ## Remove caches and build output
 	rm -rf .mypy_cache .pytest_cache .ruff_cache dist frontend/dist
