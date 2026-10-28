@@ -186,7 +186,7 @@ For frontend development, run `make serve` in one terminal and `make frontend-de
 | `FLASH_CACHED_INPUT_PRICE_PER_M`, `PRO_CACHED_INPUT_PRICE_PER_M` | Optional cache-hit prices. When unset, cache hits bill at the full input price. |
 | `OPENAI_API_KEY` | Embeddings (`text-embedding-3-small`, 1536 dimensions). |
 | `PINECONE_API_KEY`, `PINECONE_INDEX_NAME` | The serverless index (`fde-sop-index-openai`). `ingest-sops` creates it if missing. |
-| `ADMIN_AUDIT_PASSWORD` | Gates `/api/v1/audit/*`. |
+| `ADMIN_AUDIT_PASSWORD` | Gates `/api/v1/audit/*` and `/api/v1/system/status`. |
 | `SQL_MAX_FIX_ATTEMPTS`, `SQL_ROW_LIMIT`, `SQL_STATEMENT_TIMEOUT_MS`, `AGENT_MAX_TOOL_CALLS` | Agent guardrails. |
 | `CHAT_RATE_LIMIT_PER_MINUTE`, `CHAT_MAX_CONCURRENT`, `LLM_DAILY_BUDGET_USD` | API guardrails on `/chat`: 12 per minute, 4 concurrent, $5 per day. A budget of `0` disables the cap. |
 | `FORWARDED_ALLOW_IPS`, `HEALTH_PROBE_TTL_SECONDS` | Trusted proxy addresses (default `127.0.0.1`) and the health-probe cache (default 60 s). |
