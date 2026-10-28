@@ -51,6 +51,11 @@ export default function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
+  useEffect(() => {
+    const current = TABS.find((t) => t.id === tab);
+    document.title = current ? `${current.label} · Cold Chain Control Tower` : "Cold Chain Control Tower";
+  }, [tab]);
+
   const go = useCallback((next: Tab) => {
     setTab(next);
     if (window.location.hash !== `#${next}`) window.history.replaceState(null, "", `#${next}`);
@@ -89,11 +94,13 @@ export default function App() {
                   onClick={() => go(id)}
                   aria-current={active ? "page" : undefined}
                   aria-label={label}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium whitespace-nowrap transition-colors sm:px-3 ${
-                    active ? "bg-surface text-fg shadow-card" : "text-fg-subtle hover:text-fg"
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] whitespace-nowrap transition-colors sm:px-3 ${
+                    active
+                      ? "bg-accent font-semibold text-accent-fg shadow-card"
+                      : "font-medium text-fg-muted hover:bg-surface-3 hover:text-fg"
                   }`}
                 >
-                  <Icon className={`h-4 w-4 ${active ? "text-accent" : ""}`} aria-hidden />
+                  <Icon className="h-4 w-4" aria-hidden />
                   <span className="hidden md:inline">{label}</span>
                   <span className="hidden sm:inline md:hidden">{short}</span>
                 </button>

@@ -164,7 +164,7 @@ function AffectedShipments({ risk, onAsk }: { risk: RiskOverview; onAsk: (text: 
                 aria-pressed={view === option.id}
                 onClick={() => setView(option.id)}
                 className={`rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
-                  view === option.id ? "bg-surface text-fg shadow-card" : "text-fg-subtle hover:text-fg"
+                  view === option.id ? "bg-raised text-fg shadow-card" : "text-fg-subtle hover:text-fg"
                 }`}
               >
                 {option.label}

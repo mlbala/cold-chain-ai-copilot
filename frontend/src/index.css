@@ -7,6 +7,7 @@
   --surface: #ffffff;
   --surface-2: #f1f4f9;
   --surface-3: #e8edf4;
+  --raised: #ffffff;
   --line: #e2e8f0;
   --line-strong: #cbd5e1;
   --fg: #0f172a;
@@ -26,15 +27,16 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --canvas: #0b0f17;
-  --surface: #111724;
-  --surface-2: #161e2d;
-  --surface-3: #1d2738;
-  --line: #222d40;
-  --line-strong: #314059;
-  --fg: #e6edf7;
-  --fg-muted: #a8b4c7;
-  --fg-subtle: #7b8aa2;
+  --canvas: #0a0e15;
+  --surface: #141c2b;
+  --surface-2: #1b2536;
+  --surface-3: #263248;
+  --raised: #2c3a54;
+  --line: #2a3750;
+  --line-strong: #3d4e6c;
+  --fg: #f1f5fb;
+  --fg-muted: #c0cad9;
+  --fg-subtle: #94a3ba;
   --accent: #38bdf8;
   --accent-strong: #7dd3fc;
   --accent-fg: #04131f;
@@ -42,7 +44,7 @@
   --warn: #fbbf24;
   --danger: #fb7185;
   --pro: #a78bfa;
-  --shadow-card: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-card: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 1px 3px rgb(0 0 0 / 0.5);
   --shadow-pop: 0 16px 40px -16px rgb(0 0 0 / 0.7);
   --grid-dot: rgb(255 255 255 / 0.035);
 }
@@ -50,15 +52,16 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --canvas: #0b0f17;
-    --surface: #111724;
-    --surface-2: #161e2d;
-    --surface-3: #1d2738;
-    --line: #222d40;
-    --line-strong: #314059;
-    --fg: #e6edf7;
-    --fg-muted: #a8b4c7;
-    --fg-subtle: #7b8aa2;
+    --canvas: #0a0e15;
+    --surface: #141c2b;
+    --surface-2: #1b2536;
+    --surface-3: #263248;
+    --raised: #2c3a54;
+    --line: #2a3750;
+    --line-strong: #3d4e6c;
+    --fg: #f1f5fb;
+    --fg-muted: #c0cad9;
+    --fg-subtle: #94a3ba;
     --accent: #38bdf8;
     --accent-strong: #7dd3fc;
     --accent-fg: #04131f;
@@ -66,7 +69,7 @@
     --warn: #fbbf24;
     --danger: #fb7185;
     --pro: #a78bfa;
-    --shadow-card: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-card: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 1px 3px rgb(0 0 0 / 0.5);
     --shadow-pop: 0 16px 40px -16px rgb(0 0 0 / 0.7);
     --grid-dot: rgb(255 255 255 / 0.035);
   }
@@ -77,6 +80,7 @@
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
+  --color-raised: var(--raised);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --color-fg: var(--fg);

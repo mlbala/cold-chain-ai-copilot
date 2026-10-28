@@ -30,7 +30,7 @@ export default function ThemeToggle() {
             title={label}
             onClick={() => setPreference(value)}
             className={`rounded-md p-1.5 transition-colors ${
-              active ? "bg-surface text-fg shadow-card" : "text-fg-subtle hover:text-fg"
+              active ? "bg-raised text-fg shadow-card" : "text-fg-subtle hover:text-fg"
             }`}
           >
             <Icon className="h-3.5 w-3.5" aria-hidden />
