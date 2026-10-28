@@ -7,7 +7,7 @@ NPM ?= npm
 
 .PHONY: help sync lock lint format typecheck test check \
         frontend-install frontend-dev frontend-build \
-        serve run setup-rbac ingest-db ingest-sops ingest \
+        serve run setup-rbac ingest-db ingest-sops ingest eval \
         docker-build docker-run clean
 
 help: ## List available targets
@@ -35,6 +35,9 @@ test: ## Pytest (offline unit suite)
 	$(UV) run pytest
 
 check: lint typecheck test ## Everything CI runs for the backend
+
+eval: ## Live copilot test set (real model, DB, weather, and Pinecone calls; a few cents)
+	$(UV) run fde-copilot eval
 
 frontend-install: ## Install frontend dependencies from package-lock.json
 	cd frontend && $(NPM) ci
@@ -64,8 +67,9 @@ ingest: setup-rbac ingest-db ingest-sops ## Full data bootstrap in dependency or
 docker-build: ## Build the 3-stage production image
 	docker build -t $(IMAGE) .
 
-docker-run: ## Run the image with .env on :8000
-	docker run --rm -it --env-file .env -e HOST=0.0.0.0 -p 8000:8000 --memory 700m $(IMAGE)
+docker-run: ## Run the image on :8000 with .env, using the same flags as the EC2 deploy
+	docker run --rm -it --env-file .env -e APP_ENV=production -e LOG_FORMAT=json \
+		-p 8000:8000 --memory 700m --memory-swap 1500m $(IMAGE)
 
 clean: ## Remove caches and build output
 	rm -rf .mypy_cache .pytest_cache .ruff_cache dist frontend/dist

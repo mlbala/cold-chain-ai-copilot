@@ -5,8 +5,8 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
-from urllib.parse import unquote, urlsplit
 
+from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -14,9 +14,13 @@ from cold_chain_copilot.core.exceptions import ConfigurationError
 
 AGENT_ROLE_NAME = "usr_fde_ro"
 
+DbRole = Literal["admin", "agent"]
+
 SecretName = Literal[
     "aiven_admin_db_uri",
     "aiven_agent_ro_db_uri",
+    "aiven_admin_password",
+    "aiven_agent_ro_password",
     "deepseek_api_key",
     "openai_api_key",
     "pinecone_api_key",
@@ -24,8 +28,6 @@ SecretName = Literal[
 ]
 
 SERVING_SECRETS: tuple[SecretName, ...] = (
-    "aiven_admin_db_uri",
-    "aiven_agent_ro_db_uri",
     "deepseek_api_key",
     "openai_api_key",
     "pinecone_api_key",
@@ -49,6 +51,16 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65535)
 
+    # Aiven PostgreSQL. Preferred: separate fields (used whenever AIVEN_HOST is set).
+    aiven_host: str | None = None
+    aiven_port: int | None = Field(default=None, ge=1, le=65535)
+    aiven_db_name: str = "defaultdb"
+    aiven_sslmode: Literal["require", "verify-ca", "verify-full"] = "require"
+    aiven_admin_user: str = "avnadmin"
+    aiven_admin_password: SecretStr | None = None
+    aiven_agent_ro_user: str = AGENT_ROLE_NAME
+    aiven_agent_ro_password: SecretStr | None = None
+    # Alternative: full service URIs (used only when AIVEN_HOST is not set).
     aiven_admin_db_uri: SecretStr | None = None
     aiven_agent_ro_db_uri: SecretStr | None = None
     db_pool_ro_max_size: int = Field(default=4, ge=1, le=20)
@@ -56,8 +68,12 @@ class Settings(BaseSettings):
 
     deepseek_api_key: SecretStr | None = None
     deepseek_base_url: str = "https://api.deepseek.com/v1"
-    deepseek_flash_model: str = "deepseek-chat"
-    deepseek_pro_model: str = "deepseek-reasoner"
+    deepseek_flash_model: str = "deepseek-flash"
+    deepseek_pro_model: str = "deepseek-v4-pro"
+    # V4 Pro "thinks" by default: ~7K hidden reasoning tokens and ~160 s per synthesis in
+    # testing, versus ~15 s with thinking disabled and an equivalent cited answer.
+    # "provider_default" sends no thinking parameter at all.
+    deepseek_pro_thinking: Literal["disabled", "enabled", "provider_default"] = "disabled"
     flash_input_price_per_m: float = Field(default=0.15, ge=0)
     pro_input_price_per_m: float = Field(default=0.66, ge=0)
     flash_output_price_per_m: float = Field(default=0.0, ge=0)
@@ -85,8 +101,20 @@ class Settings(BaseSettings):
     sql_max_fix_attempts: int = Field(default=2, ge=0, le=5)
     sql_row_limit: int = Field(default=200, ge=1, le=1000)
     sql_statement_timeout_ms: int = Field(default=5000, ge=100, le=60000)
-    agent_max_tool_calls: int = Field(default=6, ge=1, le=20)
+    agent_max_tool_calls: int = Field(default=10, ge=1, le=20)
     history_turns: int = Field(default=4, ge=1, le=20)
+
+    # API guardrails
+    chat_rate_limit_per_minute: int = Field(default=12, ge=1, le=600)
+    chat_max_concurrent: int = Field(default=4, ge=1, le=32)
+    llm_daily_budget_usd: float = Field(default=5.0, ge=0)  # 0 disables the cap
+    forwarded_allow_ips: str = "127.0.0.1"  # proxies trusted for X-Forwarded-For
+    health_probe_ttl_seconds: float = Field(default=60.0, ge=5, le=3600)
+
+    # Demo telemetry heartbeat (see ingestion/telemetry_simulator.py). Off by default: never
+    # enable it where real telemetry writes to public.legacy_fleet_shipments.
+    telemetry_simulator: bool = False
+    telemetry_simulator_interval_seconds: int = Field(default=60, ge=10, le=3600)
 
     data_dir: Path = Path("data")
     frontend_dist: Path = Path("frontend/dist")
@@ -109,29 +137,65 @@ class Settings(BaseSettings):
                 missing.append(name.upper())
         return missing
 
+    def missing_db_settings(self) -> list[str]:
+        """Env vars still needed to connect as both database roles."""
+        if self.aiven_host:
+            required: tuple[SecretName, ...] = ("aiven_admin_password", "aiven_agent_ro_password")
+            missing = self.missing_secrets(required)
+            return ["AIVEN_PORT", *missing] if self.aiven_port is None else missing
+        return self.missing_secrets(("aiven_admin_db_uri", "aiven_agent_ro_db_uri"))
+
     def require_serving_config(self) -> None:
         """Fail fast at startup when the API cannot serve every endpoint."""
-        missing = self.missing_secrets()
+        missing = self.missing_db_settings() + self.missing_secrets()
         if missing:
             raise ConfigurationError("Missing required settings: " + ", ".join(missing))
         self.agent_role_credentials()
 
-    def agent_role_credentials(self) -> tuple[str, str]:
-        """Username and password embedded in `AIVEN_AGENT_RO_DB_URI`.
+    def db_params(self, role: DbRole) -> dict[str, str]:
+        """Connection parameters for one role.
 
-        The username must be the least-privilege role created by `setup-rbac`.
+        With `AIVEN_HOST` set they come from the separate AIVEN_* fields; otherwise they are
+        parsed out of `AIVEN_ADMIN_DB_URI` / `AIVEN_AGENT_RO_DB_URI`.
         """
-        parts = urlsplit(self.secret("aiven_agent_ro_db_uri"))
-        username = unquote(parts.username or "")
-        password = unquote(parts.password or "")
+        if self.aiven_host:
+            if self.aiven_port is None:
+                raise ConfigurationError("AIVEN_PORT is required when AIVEN_HOST is set.")
+            admin = role == "admin"
+            return {
+                "host": self.aiven_host,
+                "port": str(self.aiven_port),
+                "dbname": self.aiven_db_name,
+                "user": self.aiven_admin_user if admin else self.aiven_agent_ro_user,
+                "password": self.secret(
+                    "aiven_admin_password" if admin else "aiven_agent_ro_password"
+                ),
+                "sslmode": self.aiven_sslmode,
+            }
+        uri = self.secret("aiven_admin_db_uri" if role == "admin" else "aiven_agent_ro_db_uri")
+        return {key: str(value) for key, value in conninfo_to_dict(uri).items()}
+
+    def conninfo(self, role: DbRole) -> str:
+        """libpq connection string for `role`, with every value safely quoted."""
+        return make_conninfo(**self.db_params(role))
+
+    def agent_role_credentials(self) -> tuple[str, str]:
+        """Username and password for the agent role, validated for least privilege.
+
+        The username must be the role created by `setup-rbac`.
+        """
+        params = self.db_params("agent")
+        username = params.get("user", "")
+        password = params.get("password", "")
+        source = "AIVEN_AGENT_RO_USER" if self.aiven_host else "AIVEN_AGENT_RO_DB_URI"
         if username != AGENT_ROLE_NAME:
             raise ConfigurationError(
-                f"AIVEN_AGENT_RO_DB_URI must authenticate as {AGENT_ROLE_NAME!r}, "
-                f"got {username or 'no user'!r}."
+                f"{source} must be {AGENT_ROLE_NAME!r}, got {username or 'no user'!r}."
             )
         if len(password) < 12:
             raise ConfigurationError(
-                "AIVEN_AGENT_RO_DB_URI must carry a password of at least 12 characters."
+                "The agent role password must be at least 12 characters "
+                f"({'AIVEN_AGENT_RO_PASSWORD' if self.aiven_host else 'AIVEN_AGENT_RO_DB_URI'})."
             )
         return username, password
 

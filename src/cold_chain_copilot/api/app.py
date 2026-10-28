@@ -15,14 +15,16 @@ from starlette.types import Scope
 
 from cold_chain_copilot import __version__
 from cold_chain_copilot.agent.graph import build_copilot
-from cold_chain_copilot.api.dependencies import AppRuntime, RuntimeDep
+from cold_chain_copilot.api.dependencies import AppRuntime, ChatGuards, RuntimeDep
 from cold_chain_copilot.api.schemas import HealthResponse
 from cold_chain_copilot.api.v1 import api_router
 from cold_chain_copilot.core.config import Settings, get_settings
 from cold_chain_copilot.core.exceptions import ConfigurationError
 from cold_chain_copilot.core.logging import configure_logging, get_logger
+from cold_chain_copilot.core.metrics import metrics
 from cold_chain_copilot.db.audit import AuditLogger
 from cold_chain_copilot.db.pool import DatabasePools
+from cold_chain_copilot.ingestion.telemetry_simulator import TelemetrySimulator
 
 logger = get_logger(__name__)
 
@@ -34,15 +36,26 @@ _CSP = (
 
 
 class SPAStaticFiles(StaticFiles):
-    """Serves the built SPA and falls back to index.html for client-side routes."""
+    """Serves the built SPA and falls back to index.html for client-side routes.
+
+    Vite fingerprints every file under `assets/`, so those are cached for a year and a missing
+    one is a real 404. Falling back to index.html there would hand the browser HTML for a script,
+    which it refuses to run, leaving a blank page after a redeploy. Everything else, index.html
+    included, is revalidated on each load so a new build shows up immediately.
+    """
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         try:
-            return await super().get_response(path, scope)
+            response = await super().get_response(path, scope)
         except StarletteHTTPException as exc:
-            if exc.status_code != 404 or path.startswith("api/"):
+            if exc.status_code != 404 or path.startswith(("api/", "assets/")):
                 raise
-            return await super().get_response("index.html", scope)
+            response = await super().get_response("index.html", scope)
+        immutable = path.startswith("assets/")
+        response.headers.setdefault(
+            "Cache-Control", "public, max-age=31536000, immutable" if immutable else "no-cache"
+        )
+        return response
 
 
 async def _security_headers(
@@ -67,14 +80,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         settings.require_serving_config()
+        metrics.reset()
         pools = DatabasePools.from_settings(settings)
         pools.open()
         audit = AuditLogger(pools.ro)
         audit.start()
+        simulator: TelemetrySimulator | None = None
         try:
+            if settings.telemetry_simulator:
+                simulator = TelemetrySimulator(
+                    pools.admin, interval_s=settings.telemetry_simulator_interval_seconds
+                )
+                simulator.start()
             copilot = build_copilot(settings, pools.ro, audit)
             app.state.runtime = AppRuntime(
-                settings=settings, pools=pools, audit=audit, copilot=copilot
+                settings=settings,
+                pools=pools,
+                audit=audit,
+                copilot=copilot,
+                guards=ChatGuards.from_settings(settings),
+                simulator=simulator,
             )
             logger.info(
                 "startup_complete",
@@ -86,6 +111,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             app.state.runtime = None
+            if simulator is not None:
+                simulator.stop()
             audit.stop()
             pools.close()
             logger.info("shutdown_complete")

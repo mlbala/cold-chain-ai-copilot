@@ -65,8 +65,8 @@ class DatabasePools:
     @classmethod
     def from_settings(cls, settings: Settings) -> DatabasePools:
         return cls(
-            ro_conninfo=settings.secret("aiven_agent_ro_db_uri"),
-            admin_conninfo=settings.secret("aiven_admin_db_uri"),
+            ro_conninfo=settings.conninfo("agent"),
+            admin_conninfo=settings.conninfo("admin"),
             ro_max_size=settings.db_pool_ro_max_size,
             admin_max_size=settings.db_pool_admin_max_size,
         )

@@ -44,7 +44,7 @@ def apply_security_setup(settings: Settings) -> None:
     """
     username, password = settings.agent_role_credentials()
 
-    with direct_connection(settings.secret("aiven_admin_db_uri")) as conn, conn.transaction():
+    with direct_connection(settings.conninfo("admin")) as conn, conn.transaction():
         existing = conn.execute(
             sql.SQL("SELECT {} FROM pg_roles WHERE rolname = %s").format(
                 sql.SQL(", ").join(sql.Identifier(attr) for attr in _ELEVATED_ATTRIBUTES)

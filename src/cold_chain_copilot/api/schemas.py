@@ -144,3 +144,80 @@ class RbacTestReport(_Schema):
     total: int
     passed_count: int
     results: list[RbacProbeResult]
+
+
+RiskLevelName = Literal["critical", "high", "elevated", "normal"]
+
+
+class RiskFactorOut(_Schema):
+    code: str
+    label: str
+    points: int
+
+
+class RiskShipment(ActiveShipment):
+    risk_score: int
+    risk_level: RiskLevelName
+    factors: list[RiskFactorOut]
+    minutes_since_ping: int
+
+
+class RiskBucketOut(_Schema):
+    name: str
+    shipments: int
+    at_risk: int
+    critical: int
+    high: int
+    worst_level: RiskLevelName
+    cargo_types: list[str]
+
+
+class RiskOverview(_Schema):
+    generated_at_utc: datetime
+    totals: dict[RiskLevelName, int]
+    at_risk: int
+    pharma_at_risk: int
+    delayed: int
+    shipments: list[RiskShipment] = Field(description="All active shipments, highest risk first.")
+    by_destination: list[RiskBucketOut]
+    by_origin: list[RiskBucketOut]
+    by_cargo: list[RiskBucketOut]
+
+
+ComponentState = Literal["ok", "degraded", "down", "unknown"]
+
+
+class ComponentStatus(_Schema):
+    key: str
+    name: str
+    status: ComponentState
+    detail: str
+    latency_ms: int | None = None
+    checked_at_utc: datetime | None = None
+
+
+class GuardrailStatus(_Schema):
+    key: str
+    name: str
+    layer: Literal["database", "sql", "agent", "api", "audit"]
+    setting: str
+    description: str
+    triggered: int | None = Field(
+        default=None, description="Activations since the API started (None: not counted)."
+    )
+
+
+class SystemStatus(_Schema):
+    status: ComponentState
+    version: str
+    environment: str
+    started_at_utc: datetime
+    uptime_s: int
+    generated_at_utc: datetime
+    components: list[ComponentStatus]
+    guardrails: list[GuardrailStatus]
+    counters: dict[str, int]
+    llm_spend_today_usd: float
+    llm_daily_budget_usd: float
+    active_sessions: int
+    max_sessions: int

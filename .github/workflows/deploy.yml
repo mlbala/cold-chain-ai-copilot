@@ -130,6 +130,7 @@ jobs:
               --name "$CONTAINER_NAME" \
               --restart unless-stopped \
               --env-file "$ENV_FILE" \
+              -e APP_ENV=production -e LOG_FORMAT=json \
               -p "${APP_PORT}:8000" \
               --memory 700m --memory-swap 1500m \
               --log-opt max-size=20m --log-opt max-file=3 \

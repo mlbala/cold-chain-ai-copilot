@@ -111,6 +111,14 @@ class AuditLogger:
     def dropped(self) -> int:
         return self._dropped
 
+    @property
+    def pending(self) -> int:
+        return self._queue.qsize()
+
+    @property
+    def running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
             return
