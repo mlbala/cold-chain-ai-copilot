@@ -7,7 +7,7 @@ NPM ?= npm
 
 .PHONY: help sync lock lint format typecheck test check \
         frontend-install frontend-dev frontend-build \
-        serve run setup-rbac ingest-db ingest-sops ingest \
+        serve run setup-rbac ingest-db ingest-sops ingest eval \
         docker-build docker-run clean
 
 help: ## List available targets
@@ -35,6 +35,9 @@ test: ## Pytest (offline unit suite)
 	$(UV) run pytest
 
 check: lint typecheck test ## Everything CI runs for the backend
+
+eval: ## Live copilot test set (real model, DB, weather, and Pinecone calls; a few cents)
+	$(UV) run fde-copilot eval
 
 frontend-install: ## Install frontend dependencies from package-lock.json
 	cd frontend && $(NPM) ci

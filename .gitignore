@@ -242,3 +242,6 @@ data/policy/.ingest_cache.json
 
 # Personal local helpers (never pushed)
 scripts/local/
+
+# Copilot test-set run reports (local, per run)
+evals/reports/

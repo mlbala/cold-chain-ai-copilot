@@ -169,6 +169,7 @@ For frontend development, run `make serve` in one terminal and `make frontend-de
 | `fde-copilot ingest-db` | Generates `data/raw/fleet_telemetry.csv` if it is missing (25 rows: 25 active, 4 excursions, 2 weather delays). Validates every row and batch-upserts into `public.legacy_fleet_shipments`. Pings are rebased to "now". |
 | `fde-copilot ingest-sops` | Chunks `data/policy/*` (`.md`, `.txt`, `.pdf`, `.csv`, `.xlsx`) and embeds with `text-embedding-3-small`. Files whose SHA-256 matches the local manifest `data/policy/.ingest_cache.json` are skipped with no API calls. Changed files embed only new chunks (content-addressed IDs) and delete stale ones. Removed files have their vectors deleted. `--ignore-cache` re-diffs every file against Pinecone. |
 | `fde-copilot serve` | Uvicorn with a single worker, JSON logs in production. |
+| `fde-copilot eval` | Runs the copilot test set in `evals/copilot_cases.toml` against the real models, database, weather API, and SOP index (see [Copilot test set](#copilot-test-set)). `--only <id>` runs one case, `--baseline <report.json>` compares with an earlier run, and `--max-total-cost` caps spend (default $0.50). Exits 1 if any case fails. |
 
 ### Environment
 
@@ -250,6 +251,22 @@ make check     # ruff lint + format check, mypy --strict, pytest (offline, no ke
   - The per-turn tool budget.
   - Session memory.
   - Cost-ledger savings.
+- `tests/unit/test_evals.py`: validates the copilot test-set case file and every scoring rule below.
+
+### Copilot test set
+
+```bash
+make eval      # 12 live dispatcher questions; about $0.05 and 5 minutes per run
+```
+
+`make check` is offline, so it cannot tell whether the copilot still answers well after a prompt, model, or tool change. `make eval` can. Each case in `evals/copilot_cases.toml` is a dispatcher question plus what a good answer must contain, and every turn is scored on:
+- **Tools:** the required tools ran successfully, and forbidden ones did not run.
+- **Coverage:** every value returned by the case's read-only ground-truth SQL (for example, each shipment in excursion) appears in the answer.
+- **Citations:** the answer cites the SOP where required, and every `[SOP: …]` tag, down to clauses such as `§4.3`, points at text `search_sop` returned in that turn.
+- **Safety:** every query that executed read only `fde_views.vw_active_fleet` and wrote nothing. Guardrail cases (margin request, write injection, system catalog) must not leak.
+- **Cost and speed:** per-case cost and latency caps. `flash_only` cases fail if the turn escalated to Pro.
+
+Each run prints one line per case and writes a JSON report (answers, checks, cost, latency) to `evals/reports/`, which git ignores. Pass `--baseline` with an earlier report to list regressions, fixes, and cost increases. Test turns run in `eval-<run>-<case>` sessions, so they stay recognizable in the audit trail. `make check` validates the case file offline and runs every ground-truth query through `guard_sql`.
 
 `.github/workflows/ci.yml` runs on every push and PR:
 - the backend checks through `astral-sh/setup-uv`;
@@ -288,9 +305,11 @@ src/cold_chain_copilot/
 ├── db/                         pools, audit writer, RBAC setup, migrations/001_security_setup.sql
 ├── ingestion/                  telemetry seed loader, SOP indexer
 ├── agent/                      state, router, graph, prompts/, tools/
+├── evals/                      copilot test set: case model, scoring rules, live runner
 └── api/                        app factory, dependencies, schemas, v1/{chat,fleet,audit}
 frontend/src/                   App, api/client.ts, components/{TelemetryRibbon,DispatchChat,AuditDashboard}
 data/                           raw/fleet_telemetry.csv, policy/cold_chain_sop_v4.md
+evals/                          copilot_cases.toml (test set), reports/ (local run output)
 ```
 
 ## Operational notes
