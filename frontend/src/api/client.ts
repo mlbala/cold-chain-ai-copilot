@@ -54,6 +54,27 @@ export interface CostSavings {
   input_tokens_only: boolean;
 }
 
+export interface ActiveShipment {
+  shipment_id: string;
+  truck_id: string;
+  driver_name: string;
+  origin_hub: string;
+  destination_hub: string;
+  cargo_type: string;
+  current_lat: number;
+  current_lon: number;
+  reefer_temp_c: number;
+  target_min_temp_c: number;
+  target_max_temp_c: number;
+  door_status: string;
+  battery_pct: number;
+  eta_hours: number;
+  shipment_status: string;
+  last_updated_utc: string;
+  is_excursion: boolean;
+  excursion_c: number;
+}
+
 export interface FleetSummary {
   active_fleet: number;
   temp_excursions: number;
@@ -63,6 +84,7 @@ export interface FleetSummary {
   last_ping_utc: string | null;
   generated_at_utc: string;
   cost_savings: CostSavings;
+  shipments: ActiveShipment[];
 }
 
 export interface HealthResponse {

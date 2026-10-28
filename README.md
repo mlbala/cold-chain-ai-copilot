@@ -136,7 +136,7 @@ For frontend development, run `make serve` in one terminal and `make frontend-de
 | Method & path | Auth | Description |
 |---|---|---|
 | `GET /api/v1/health` | none | Liveness plus a database ping. |
-| `GET /api/v1/fleet/summary` | none | KPI ribbon data. See below. |
+| `GET /api/v1/fleet/summary` | none | KPI ribbon counts plus the active rows from `vw_active_fleet`, most urgent first (excursions, weather holds, low battery). See below. |
 | `POST /api/v1/chat` | none | `{message, session_id?}` → answer, `trace_steps[]`, models used, token usage, cost. |
 | `POST /api/v1/audit/logs` | admin | Paginated, filterable audit trail. |
 | `POST /api/v1/audit/rbac-test` | admin | Live RBAC penetration test report. |

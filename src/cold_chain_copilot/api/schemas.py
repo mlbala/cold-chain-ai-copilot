@@ -52,6 +52,29 @@ class CostSavings(_Schema):
     )
 
 
+class ActiveShipment(_Schema):
+    """One row of `fde_views.vw_active_fleet` (no commercial fields exist to expose)."""
+
+    shipment_id: str
+    truck_id: str
+    driver_name: str
+    origin_hub: str
+    destination_hub: str
+    cargo_type: str
+    current_lat: float
+    current_lon: float
+    reefer_temp_c: float
+    target_min_temp_c: float
+    target_max_temp_c: float
+    door_status: str
+    battery_pct: int
+    eta_hours: float
+    shipment_status: str
+    last_updated_utc: datetime
+    is_excursion: bool
+    excursion_c: float = Field(description="Degrees outside the target band (0 when in band).")
+
+
 class FleetSummary(_Schema):
     active_fleet: int
     temp_excursions: int
@@ -61,6 +84,10 @@ class FleetSummary(_Schema):
     last_ping_utc: datetime | None
     generated_at_utc: datetime
     cost_savings: CostSavings
+    shipments: list[ActiveShipment] = Field(
+        description="Active rows, most urgent first (excursions, weather holds, low battery). "
+        "Capped at SHIPMENT_ROW_LIMIT; compare with active_fleet to detect truncation."
+    )
 
 
 class AuditLogQuery(_Schema):

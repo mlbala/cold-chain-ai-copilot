@@ -35,7 +35,7 @@ from langchain_core.messages import (
 )
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
-from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from psycopg_pool import ConnectionPool
@@ -168,7 +168,7 @@ class CopilotAgent:
         self._audit = audit
         self._history_turns = history_turns
         self._max_sessions = max_sessions
-        self._checkpointer = InMemorySaver()
+        self._checkpointer = MemorySaver()
         self._sessions: OrderedDict[str, threading.Lock] = OrderedDict()
         self._sessions_lock = threading.Lock()
         self.graph = self._build()
