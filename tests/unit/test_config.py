@@ -21,7 +21,7 @@ def settings(**overrides: Any) -> Settings:
 def separate(**overrides: Any) -> Settings:
     fields: dict[str, Any] = {
         "aiven_host": HOST,
-        "aiven_port": 26563,
+        "aiven_port": 12345,
         "aiven_db_name": "defaultdb",
         "aiven_admin_password": SecretStr("admin-password"),
         "aiven_agent_ro_password": SecretStr("agent-password-123"),
@@ -36,7 +36,7 @@ def test_separate_fields_build_both_connections() -> None:
     agent = conninfo_to_dict(s.conninfo("agent"))
     assert admin == {
         "host": HOST,
-        "port": "26563",
+        "port": "12345",
         "dbname": "defaultdb",
         "user": "avnadmin",
         "password": "admin-password",
