@@ -1,4 +1,4 @@
-"""GET /api/v1/system/status — component health, guardrail inventory, and live counters.
+"""GET /api/v1/system/status — component health, guardrail inventory, and live counters (admin).
 
 External dependencies are probed with free, read-only calls (model listings, index stats,
 one forecast point) and cached for HEALTH_PROBE_TTL_SECONDS, so polling the dashboard never
@@ -20,7 +20,7 @@ from pinecone.exceptions import PineconeException
 
 from cold_chain_copilot import __version__
 from cold_chain_copilot.agent.tools.weather_meteo import OpenMeteoClient
-from cold_chain_copilot.api.dependencies import RuntimeDep
+from cold_chain_copilot.api.dependencies import AdminDep, RuntimeDep
 from cold_chain_copilot.api.schemas import (
     ComponentState,
     ComponentStatus,
@@ -281,7 +281,7 @@ def guardrail_inventory(settings: Settings, max_sessions: int) -> list[Guardrail
         item(
             "admin_auth", "Admin password and lockout", "api",
             "constant-time check · 5 failures → 5 min lockout",
-            "Gates the audit trail and the RBAC penetration test.",
+            "Gates system health, the audit trail and the RBAC penetration test.",
             "admin_lockouts",
         ),
         item(
@@ -336,7 +336,7 @@ def _overall(components: list[ComponentStatus]) -> ComponentState:
 
 
 @router.get("/status", response_model=SystemStatus, summary="Health, guardrails, and counters")
-def system_status(runtime: RuntimeDep) -> SystemStatus:
+def system_status(runtime: RuntimeDep, _admin: AdminDep) -> SystemStatus:
     settings = runtime.settings
     ttl = settings.health_probe_ttl_seconds
 

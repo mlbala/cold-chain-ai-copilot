@@ -279,7 +279,7 @@ export const api = {
 
   fleetRisk: (): Promise<RiskOverview> => request("/fleet/risk"),
 
-  systemStatus: (): Promise<SystemStatus> => request("/system/status"),
+  systemStatus: (password: string): Promise<SystemStatus> => request("/system/status", {}, password),
 
   chat: (message: string, sessionId: string | null): Promise<ChatResponse> =>
     request("/chat", {

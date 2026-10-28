@@ -278,7 +278,11 @@ def test_system_status_reports_components_and_guardrails(
 
     monkeypatch.setattr(system, "EXTERNAL_PROBES", {k: fake(k) for k in system.EXTERNAL_PROBES})
     system.probe_cache.clear()
-    body = client_factory().get("/api/v1/system/status").json()
+    body = (
+        client_factory()
+        .get("/api/v1/system/status", headers={"X-Admin-Password": ADMIN_PASSWORD})
+        .json()
+    )
 
     assert body["status"] == "ok"
     keys = [c["key"] for c in body["components"]]
@@ -297,8 +301,16 @@ def test_system_status_is_down_when_database_is_down(
     client_factory: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(system, "EXTERNAL_PROBES", {})
-    body = client_factory(down=True).get("/api/v1/system/status").json()
+    client = client_factory(down=True)
+    body = client.get("/api/v1/system/status", headers={"X-Admin-Password": ADMIN_PASSWORD}).json()
     assert body["status"] == "down"
+
+
+def test_system_status_requires_admin_password(client_factory: Any) -> None:
+    client = client_factory()
+    assert client.get("/api/v1/system/status").status_code == 401
+    wrong = client.get("/api/v1/system/status", headers={"X-Admin-Password": "nope"})
+    assert wrong.status_code == 401
 
 
 def test_spa_revalidates_html_and_never_serves_html_for_a_missing_asset(tmp_path: Path) -> None:

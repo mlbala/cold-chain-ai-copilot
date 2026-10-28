@@ -1,4 +1,4 @@
-"""Deterministic shipment risk triage for the Risk & Health dashboard.
+"""Deterministic shipment risk triage for the Fleet Risk dashboard.
 
 Scores encode the thresholds of SOP v4 (excursion severity, pharma handling, weather holds,
 battery limits, door protocol, telemetry gaps) so the dashboard can rank shipments without a

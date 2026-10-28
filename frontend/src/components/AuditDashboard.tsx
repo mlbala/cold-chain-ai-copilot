@@ -16,6 +16,8 @@ import type { FormEvent } from "react";
 
 import { ApiError, api } from "../api/client";
 import type { AuditLogPage, RbacProbeResult, RbacTestReport } from "../api/client";
+import { usePolling } from "../hooks/usePolling";
+import { Guardrails, SystemHealth } from "./SystemHealth";
 import { Button, Card, CardHeader, EmptyState, Pill, ScoreRing } from "./ui";
 import type { Tone } from "./ui";
 
@@ -65,7 +67,8 @@ function PasswordGate({ onUnlock }: { onUnlock: (password: string) => Promise<vo
         </div>
         <h2 className="mt-4 text-center text-base font-semibold text-fg">Security Audit</h2>
         <p className="mt-1 text-center text-xs text-fg-subtle">
-          The immutable audit trail and the live RBAC penetration test are restricted to administrators.
+          System health, the guardrail inventory, the live RBAC penetration test and the immutable audit trail are
+          restricted to administrators.
         </p>
         <form onSubmit={submit} className="mt-5 space-y-3">
           <label htmlFor="admin-password" className="text-xs font-medium text-fg-muted">
@@ -321,6 +324,29 @@ function AuditLogTable({ password }: { password: string }) {
   );
 }
 
+function AdminWorkspace({ password, onLock }: { password: string; onLock: () => void }) {
+  const status = usePolling(() => api.systemStatus(password), 30_000);
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <Pill tone="ok" icon={LockOpen}>
+          Admin session
+        </Pill>
+        <Button size="sm" icon={Lock} onClick={onLock}>
+          Lock
+        </Button>
+      </div>
+      {status.error ? (
+        <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">{status.error}</div>
+      ) : null}
+      <SystemHealth state={status} />
+      <Guardrails status={status.data} />
+      <PenTestPanel password={password} />
+      <AuditLogTable password={password} />
+    </div>
+  );
+}
+
 export default function AuditDashboard() {
   const [password, setPassword] = useState<string | null>(null);
 
@@ -330,19 +356,5 @@ export default function AuditDashboard() {
   }
 
   if (password === null) return <PasswordGate onUnlock={unlock} />;
-
-  return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <Pill tone="ok" icon={LockOpen}>
-          Admin session
-        </Pill>
-        <Button size="sm" icon={Lock} onClick={() => setPassword(null)}>
-          Lock
-        </Button>
-      </div>
-      <PenTestPanel password={password} />
-      <AuditLogTable password={password} />
-    </div>
-  );
+  return <AdminWorkspace password={password} onLock={() => setPassword(null)} />;
 }

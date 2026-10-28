@@ -29,8 +29,8 @@ The UI is one React 19 page with three tabs under a live KPI ribbon: active flee
 | Tab | What it does |
 |---|---|
 | **Dispatch Console** | Chat with the copilot. Each answer carries SOP citation badges, a model-route summary (Flash → Pro), cost and copy. The expandable **execution trace** timeline shows every SQL query, weather payload and SOP chunk, with per-step latency. Beside the chat, the **Live Fleet** board offers filters, search, a temperature-vs-band gauge, battery meters and *Ask copilot* on any truck. |
-| **Risk & Health** | Risk mix and level counts, affected shipments with their risk factors, delayed shipments, and supply-chain impact by destination, origin or cargo. Below that: live **system health** for every dependency, model spend against the daily budget, and the **guardrail inventory** with activation counters. |
-| **Security Audit** | Password-gated. Runs the live RBAC penetration test (score ring, results by category) and pages through the immutable audit trail. |
+| **Fleet Risk** | Risk mix and level counts, affected shipments with their risk factors, delayed shipments, and supply-chain impact by destination, origin or cargo. |
+| **Security Audit** | Password-gated, for administrators. Live **system health** for every dependency, model spend against the daily budget, the **guardrail inventory** with activation counters, the live RBAC penetration test (score ring, results by category), and the immutable audit trail. |
 
 ## Architecture
 
@@ -132,7 +132,7 @@ You can check this live:
 4. **Margin-free view.** `vw_active_fleet` never projects `internal_margin_usd` and hides `DELIVERED` rows.
 5. **Immutable audit.** Triggers reject `UPDATE`, `DELETE` and `TRUNCATE` on `agent_audit_log` for every role, the owner included.
 6. **Live proof.** `POST /api/v1/audit/rbac-test` sends 13 fixed attack probes straight to PostgreSQL as `usr_fde_ro`, deliberately skipping layer 1. It reports pass or fail for each probe. Every probe runs in a transaction that is always rolled back.
-7. **Admin surface.** The audit endpoints require `X-Admin-Password`. It is compared in constant time, and a client is locked out after 5 failures in 5 minutes.
+7. **Admin surface.** The audit endpoints and `/system/status` require `X-Admin-Password`. It is compared in constant time, and a client is locked out after 5 failures in 5 minutes.
 8. **API guardrails on `/chat`.** These run before any model call, cheapest first:
    - a per-client rate limit (`CHAT_RATE_LIMIT_PER_MINUTE`, HTTP 429);
    - a daily model-spend cap (`LLM_DAILY_BUDGET_USD`, HTTP 429 until 00:00 UTC);
@@ -141,7 +141,7 @@ You can check this live:
    `X-Forwarded-For` is honoured only from `FORWARDED_ALLOW_IPS`, so clients cannot spoof their address to dodge limits.
 9. **Agent guardrails.** A per-turn tool budget, a cap on SQL repair attempts, a graph step limit, a session-memory cap, and the SOP citation contract in the static system prompt.
 
-The **Risk & Health** tab lists all 18 controls with their live settings and activation counters, served by `GET /api/v1/system/status`.
+The admin-only **Security Audit** tab lists all 18 controls with their live settings and activation counters, served by `GET /api/v1/system/status`.
 
 ## Quickstart
 
@@ -204,7 +204,7 @@ For frontend development, run `make serve` in one terminal and `make frontend-de
 | `POST /api/v1/audit/logs` | admin | Paginated, filterable audit trail. |
 | `POST /api/v1/audit/rbac-test` | admin | Live RBAC penetration test report. |
 | `GET /api/v1/fleet/risk` | none | Deterministic risk triage (score 0–100, level, factors) for every active shipment, plus supply-chain impact grouped by destination hub, origin hub and cargo class. No model call. |
-| `GET /api/v1/system/status` | none | Component health and the guardrail inventory with activation counters (details below). |
+| `GET /api/v1/system/status` | admin | Component health and the guardrail inventory with activation counters (details below). |
 
 Component health in `/system/status` covers both database roles, DeepSeek, OpenAI, Pinecone, Open-Meteo, the audit writer and session memory.
 - External services are probed with free, read-only calls (model listings, index stats, one forecast point).

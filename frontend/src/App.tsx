@@ -6,7 +6,7 @@ import { api } from "./api/client";
 import AuditDashboard from "./components/AuditDashboard";
 import DispatchChat from "./components/DispatchChat";
 import FleetBoard from "./components/FleetBoard";
-import RiskHealthDashboard from "./components/RiskHealthDashboard";
+import RiskDashboard from "./components/RiskDashboard";
 import TelemetryRibbon from "./components/TelemetryRibbon";
 import ThemeToggle from "./components/ThemeToggle";
 import { StatusDot } from "./components/ui";
@@ -16,7 +16,7 @@ type Tab = "dispatch" | "risk" | "audit";
 
 const TABS: { id: Tab; label: string; short: string; icon: LucideIcon }[] = [
   { id: "dispatch", label: "Dispatch Console", short: "Dispatch", icon: MessageSquare },
-  { id: "risk", label: "Risk & Health", short: "Risk", icon: Gauge },
+  { id: "risk", label: "Fleet Risk", short: "Risk", icon: Gauge },
   { id: "audit", label: "Security Audit", short: "Audit", icon: ShieldCheck },
 ];
 
@@ -122,7 +122,7 @@ export default function App() {
           <DispatchChat onTurnComplete={() => setRefreshKey((value) => value + 1)} prefill={prefill} />
           <FleetBoard state={fleet} onAsk={ask} />
         </div>
-        {tab === "risk" ? <RiskHealthDashboard onAsk={ask} /> : null}
+        {tab === "risk" ? <RiskDashboard onAsk={ask} /> : null}
         {tab === "audit" ? <AuditDashboard /> : null}
       </main>
     </div>
