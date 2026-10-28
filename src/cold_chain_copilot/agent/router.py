@@ -41,10 +41,21 @@ class ModelSpec:
     label: str
     input_price_per_m: float
     output_price_per_m: float
+    cached_input_price_per_m: float | None = None
 
-    def cost(self, prompt_tokens: int, completion_tokens: int) -> float:
+    def cost(self, prompt_tokens: int, completion_tokens: int, cached_tokens: int = 0) -> float:
+        """USD for one call. Cache-hit tokens bill at the cache price when one is configured,
+        otherwise at the full input price (conservative)."""
+        cached = min(max(cached_tokens, 0), prompt_tokens)
+        cache_price = (
+            self.input_price_per_m
+            if self.cached_input_price_per_m is None
+            else self.cached_input_price_per_m
+        )
         return (
-            prompt_tokens * self.input_price_per_m + completion_tokens * self.output_price_per_m
+            (prompt_tokens - cached) * self.input_price_per_m
+            + cached * cache_price
+            + completion_tokens * self.output_price_per_m
         ) / 1_000_000
 
 
@@ -69,6 +80,8 @@ class LedgerSnapshot(BaseModel):
     saved_usd: float
     saved_pct: float
     flash_share_pct: float
+    cache_hit_pct: float
+    cache_saved_usd: float
 
 
 class CostLedger:
@@ -103,6 +116,10 @@ class CostLedger:
             if usage.all_pro_cost_usd
             else 0.0,
             flash_share_pct=round(100 * calls["flash"] / total_calls, 1) if total_calls else 0.0,
+            cache_hit_pct=round(100 * usage.cached_tokens / usage.prompt_tokens, 1)
+            if usage.prompt_tokens
+            else 0.0,
+            cache_saved_usd=round(usage.cache_saved_usd, 6),
         )
 
 
@@ -116,12 +133,14 @@ def usage_from_message(message: AIMessage, spec: ModelSpec, pro_spec: ModelSpec)
     if not cached:
         raw = message.response_metadata.get("token_usage") or {}
         cached = int(raw.get("prompt_cache_hit_tokens") or 0)
+    cost = spec.cost(prompt, completion, cached)
     return TokenUsage(
         prompt_tokens=prompt,
         completion_tokens=completion,
         cached_tokens=cached,
-        cost_usd=spec.cost(prompt, completion),
-        all_pro_cost_usd=pro_spec.cost(prompt, completion),
+        cost_usd=cost,
+        all_pro_cost_usd=pro_spec.cost(prompt, completion, cached),
+        cache_saved_usd=spec.cost(prompt, completion) - cost,
     )
 
 
@@ -157,6 +176,7 @@ class HybridModelRouter:
             label="DeepSeek V4 Flash",
             input_price_per_m=settings.flash_input_price_per_m,
             output_price_per_m=settings.flash_output_price_per_m,
+            cached_input_price_per_m=settings.flash_cached_input_price_per_m,
         )
         pro_spec = ModelSpec(
             tier="pro",
@@ -164,6 +184,7 @@ class HybridModelRouter:
             label="DeepSeek V4 Pro",
             input_price_per_m=settings.pro_input_price_per_m,
             output_price_per_m=settings.pro_output_price_per_m,
+            cached_input_price_per_m=settings.pro_cached_input_price_per_m,
         )
         flash = ChatOpenAI(
             model_name=flash_spec.model_id,

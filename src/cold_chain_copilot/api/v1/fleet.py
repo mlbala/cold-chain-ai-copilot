@@ -92,6 +92,10 @@ def fleet_summary(pools: PoolsDep, copilot: CopilotDep, settings: SettingsDep) -
             saved_usd=ledger.saved_usd,
             saved_pct=ledger.saved_pct,
             flash_share_pct=ledger.flash_share_pct,
+            cache_hit_pct=ledger.cache_hit_pct,
+            cache_saved_usd=ledger.cache_saved_usd,
+            cache_priced=settings.flash_cached_input_price_per_m is not None
+            or settings.pro_cached_input_price_per_m is not None,
             input_tokens_only=settings.flash_output_price_per_m == 0
             and settings.pro_output_price_per_m == 0,
         ),

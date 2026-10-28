@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     pro_input_price_per_m: float = Field(default=0.66, ge=0)
     flash_output_price_per_m: float = Field(default=0.0, ge=0)
     pro_output_price_per_m: float = Field(default=0.0, ge=0)
+    # DeepSeek prefix-cache hits; unset means "bill hits at the full input price".
+    flash_cached_input_price_per_m: float | None = Field(default=None, ge=0)
+    pro_cached_input_price_per_m: float | None = Field(default=None, ge=0)
     llm_timeout_seconds: float = Field(default=90.0, gt=0)
 
     openai_api_key: SecretStr | None = None

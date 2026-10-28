@@ -47,6 +47,9 @@ class CostSavings(_Schema):
     saved_usd: float
     saved_pct: float
     flash_share_pct: float
+    cache_hit_pct: float = Field(description="Share of prompt tokens served from DeepSeek's cache.")
+    cache_saved_usd: float = Field(description="Saved by cache-hit pricing (0 when not priced).")
+    cache_priced: bool = Field(description="True when a cache-hit price is configured.")
     input_tokens_only: bool = Field(
         description="True when output-token prices are not configured, so costs cover input only."
     )

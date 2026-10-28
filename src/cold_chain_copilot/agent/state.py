@@ -26,6 +26,7 @@ class TokenUsage(BaseModel):
     cached_tokens: int = 0
     cost_usd: float = 0.0
     all_pro_cost_usd: float = 0.0
+    cache_saved_usd: float = 0.0
 
     def __add__(self, other: TokenUsage) -> TokenUsage:
         return TokenUsage(
@@ -34,6 +35,7 @@ class TokenUsage(BaseModel):
             cached_tokens=self.cached_tokens + other.cached_tokens,
             cost_usd=self.cost_usd + other.cost_usd,
             all_pro_cost_usd=self.all_pro_cost_usd + other.all_pro_cost_usd,
+            cache_saved_usd=self.cache_saved_usd + other.cache_saved_usd,
         )
 
 

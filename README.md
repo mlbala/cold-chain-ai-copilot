@@ -72,6 +72,42 @@ START → agent (Flash) ──tool calls──▶ tools ──SQL failure──�
 - Pro never calls tools, so the reasoning model stays off the tool-calling path.
 - **Prefix caching.** The system prompt (`agent/prompts/system_prompt.md`, about 1,500 tokens) is fully static and always sent first. That lets DeepSeek's automatic prefix cache serve it on repeated calls. Dynamic context (the current time) is appended after it.
 
+## FinOps: routing and caching math
+
+Two levers set the model bill. **Routing** sends most calls to Flash, at $0.15 per 1M input tokens instead of Pro's $0.66. **Prefix caching** comes from the static ~1,825-token system prompt, which leads every call, so DeepSeek can serve it from cache. The figures below come from this repository's own payloads, measured with `cl100k_base` as an approximation of DeepSeek's tokenizer:
+
+| Component | Tokens |
+|---|---|
+| Static system prompt (cached prefix) | 1,825 |
+| Tool schemas (Flash calls only) | 544 |
+| SQL result, 4 excursion rows | 426 |
+| SOP top-4 excursion chunks | 1,360 |
+| Open-Meteo summary, one truck | 456 |
+
+**Per-call cost** = `(uncached_in × p_in + cached_in × p_cache + out × p_out) / 1,000,000`.
+
+The examples below price input tokens only, which matches the app's default `*_OUTPUT_PRICE_PER_M=0`. They also assume a cache-hit price of **10 % of the input price**. Put your contract's real price in `FLASH_CACHED_INPUT_PRICE_PER_M` and `PRO_CACHED_INPUT_PRICE_PER_M`. When these are unset, the app bills cache hits at the full input price.
+
+| Turn type | Calls (Flash / Pro) | Input tokens (Flash / Pro) | All-Pro | Hybrid | Hybrid + cache |
+|---|---|---|---|---|---|
+| Simple lookup (Flash only) | 2 / 0 | 5,148 / 0 | $0.00340 | $0.00077 (−77 %) | $0.00028 (−92 %) |
+| Multi-source audit: SQL + SOP + 4× weather, then Pro synthesis | 3 / 1 | 13,063 / 6,055 | $0.01262 | $0.00596 (−53 %) | $0.00413 (−67 %) |
+| SQL repair: Flash, then Pro fix, then Flash | 2 / 1 | 5,464 / 2,075 | $0.00498 | $0.00219 (−56 %) | $0.00061 (−88 %) |
+
+**Per 1,000 turns**, with a mix of 60 % simple, 30 % multi-source and 10 % repair:
+- All-Pro costs **$6.32**.
+- Hybrid routing costs **$2.47**, a 61 % saving.
+- Hybrid plus prefix caching costs **$1.47**, a 77 % saving.
+
+That mix makes 2,300 of 2,700 calls Flash, which is the **85 % Flash share**. The system prompt alone is about 51 % of all input tokens, which is why keeping it byte-identical and first matters.
+
+These are conservative figures. Within a turn, each Flash call also reuses the previous call's prompt as a prefix, so real cache-hit rates run higher.
+
+You can check this live:
+- The trace drawer shows prompt, cached and completion tokens plus cost for every step.
+- The Cost Savings tile shows routing savings against an all-Pro baseline. Both sides are priced with the same cache rules, so the tile isolates the routing saving.
+- The footnote under the tile shows the prompt-cache hit rate. It also shows the cache saving when a cache price is configured.
+
 ## Security model (defense in depth)
 
 1. **SQL guard** (`agent/tools/sql_telemetry.py::guard_sql`). This is a tokenizer, not a single regex. It allows exactly one `SELECT`/`WITH` statement. It blocks the following:
@@ -124,6 +160,7 @@ For frontend development, run `make serve` in one terminal and `make frontend-de
 | `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL` | DeepSeek's OpenAI-compatible endpoint (`https://api.deepseek.com/v1`). |
 | `DEEPSEEK_FLASH_MODEL`, `DEEPSEEK_PRO_MODEL` | Default to `deepseek-chat` and `deepseek-reasoner`. |
 | `FLASH_INPUT_PRICE_PER_M`, `PRO_INPUT_PRICE_PER_M` | USD per 1M input tokens (0.15 / 0.66). Output prices are optional. |
+| `FLASH_CACHED_INPUT_PRICE_PER_M`, `PRO_CACHED_INPUT_PRICE_PER_M` | Optional cache-hit prices. When unset, cache hits bill at the full input price. |
 | `OPENAI_API_KEY` | Embeddings (`text-embedding-3-small`, 1536 dimensions). |
 | `PINECONE_API_KEY`, `PINECONE_INDEX_NAME` | The serverless index (`fde-sop-index-openai`). `ingest-sops` creates it if missing. |
 | `ADMIN_AUDIT_PASSWORD` | Gates `/api/v1/audit/*`. |
@@ -175,7 +212,10 @@ The `Dockerfile` has three stages:
 
 `.github/workflows/deploy.yml` runs on manual dispatch or on `v*.*.*` tags, never on branch pushes. It works like this:
 1. It builds a `linux/amd64` image and pushes it to GHCR.
-2. It SSHes into the instance, swaps the container, and waits for `/api/v1/health` before pruning old images.
+2. **Swap check.** A t3.micro has only 1 GB of RAM, so the job SSHes in and confirms at least 2 GB of swap.
+   - If swap is short, it provisions a persistent 2 GB `/swapfile` (with `vm.swappiness=10`). This needs passwordless sudo and at least 3 GB of free disk.
+   - Set the repository variable `EC2_ENSURE_SWAP=false` to only check, failing instead of provisioning.
+3. It swaps the container, with a 700 MB memory cap and 1,500 MB including swap, and waits for `/api/v1/health` before pruning old images.
 
 The workflow needs these settings:
 - Repository secrets: `EC2_HOST`, `EC2_USER`, `EC2_SSH_KEY`, `GHCR_READ_TOKEN`.

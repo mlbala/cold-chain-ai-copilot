@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -203,3 +204,36 @@ def test_token_usage_adds_up() -> None:
     total = TokenUsage(prompt_tokens=1, cost_usd=0.1) + TokenUsage(prompt_tokens=2, cost_usd=0.2)
     assert total.prompt_tokens == 3
     assert total.cost_usd == pytest.approx(0.3)
+
+
+def test_cache_hits_bill_at_cache_price_only_when_configured() -> None:
+    message = ai("x")
+    message.usage_metadata = {
+        "input_tokens": 2000,
+        "output_tokens": 0,
+        "total_tokens": 2000,
+        "input_token_details": {"cache_read": 1800},
+    }
+    conservative = usage_from_message(message, FLASH_SPEC, PRO_SPEC)
+    assert conservative.cached_tokens == 1800
+    assert conservative.cost_usd == pytest.approx(2000 * 0.15 / 1e6)
+    assert conservative.cache_saved_usd == pytest.approx(0.0)
+
+    flash = replace(FLASH_SPEC, cached_input_price_per_m=0.015)
+    pro = replace(PRO_SPEC, cached_input_price_per_m=0.066)
+    priced = usage_from_message(message, flash, pro)
+    assert priced.cost_usd == pytest.approx((200 * 0.15 + 1800 * 0.015) / 1e6)
+    assert priced.all_pro_cost_usd == pytest.approx((200 * 0.66 + 1800 * 0.066) / 1e6)
+    assert priced.cache_saved_usd == pytest.approx(1800 * (0.15 - 0.015) / 1e6)
+
+    ledger = CostLedger()
+    ledger.record("flash", priced)
+    snapshot = ledger.snapshot()
+    assert snapshot.cache_hit_pct == 90.0
+    assert snapshot.cache_saved_usd == pytest.approx(priced.cache_saved_usd, abs=1e-6)
+
+
+def test_deepseek_native_cache_hit_field_is_read() -> None:
+    message = ai("x")
+    message.response_metadata = {"token_usage": {"prompt_cache_hit_tokens": 1536}}
+    assert usage_from_message(message, FLASH_SPEC, PRO_SPEC).cached_tokens == 1536

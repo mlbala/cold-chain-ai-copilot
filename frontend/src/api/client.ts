@@ -11,6 +11,7 @@ export interface TokenUsage {
   cached_tokens: number;
   cost_usd: number;
   all_pro_cost_usd: number;
+  cache_saved_usd: number;
 }
 
 export interface TraceStep {
@@ -51,6 +52,9 @@ export interface CostSavings {
   saved_usd: number;
   saved_pct: number;
   flash_share_pct: number;
+  cache_hit_pct: number;
+  cache_saved_usd: number;
+  cache_priced: boolean;
   input_tokens_only: boolean;
 }
 

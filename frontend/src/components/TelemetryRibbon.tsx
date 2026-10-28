@@ -127,8 +127,12 @@ export default function TelemetryRibbon({ refreshKey }: { refreshKey: number }) 
             "connecting…"
           )}
         </span>
-        {savings?.input_tokens_only && hasCalls ? (
-          <span>Savings computed on input-token prices (Flash vs Pro per 1M tokens)</span>
+        {savings && hasCalls ? (
+          <span>
+            Prompt cache hits {savings.cache_hit_pct.toFixed(0)}%
+            {savings.cache_priced ? ` (${usd(savings.cache_saved_usd)} saved)` : ""}
+            {savings.input_tokens_only ? " · savings on input-token prices" : ""}
+          </span>
         ) : null}
       </div>
     </section>
