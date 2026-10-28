@@ -126,6 +126,79 @@ export interface AuditLogPage {
   entries: AuditLogEntry[];
 }
 
+export type RiskLevel = "critical" | "high" | "elevated" | "normal";
+
+export interface RiskFactor {
+  code: string;
+  label: string;
+  points: number;
+}
+
+export interface RiskShipment extends ActiveShipment {
+  risk_score: number;
+  risk_level: RiskLevel;
+  factors: RiskFactor[];
+  minutes_since_ping: number;
+}
+
+export interface RiskBucket {
+  name: string;
+  shipments: number;
+  at_risk: number;
+  critical: number;
+  high: number;
+  worst_level: RiskLevel;
+  cargo_types: string[];
+}
+
+export interface RiskOverview {
+  generated_at_utc: string;
+  totals: Record<RiskLevel, number>;
+  at_risk: number;
+  pharma_at_risk: number;
+  delayed: number;
+  shipments: RiskShipment[];
+  by_destination: RiskBucket[];
+  by_origin: RiskBucket[];
+  by_cargo: RiskBucket[];
+}
+
+export type ComponentState = "ok" | "degraded" | "down" | "unknown";
+
+export interface ComponentStatus {
+  key: string;
+  name: string;
+  status: ComponentState;
+  detail: string;
+  latency_ms: number | null;
+  checked_at_utc: string | null;
+}
+
+export interface GuardrailStatus {
+  key: string;
+  name: string;
+  layer: "database" | "sql" | "agent" | "api" | "audit";
+  setting: string;
+  description: string;
+  triggered: number | null;
+}
+
+export interface SystemStatus {
+  status: ComponentState;
+  version: string;
+  environment: string;
+  started_at_utc: string;
+  uptime_s: number;
+  generated_at_utc: string;
+  components: ComponentStatus[];
+  guardrails: GuardrailStatus[];
+  counters: Record<string, number>;
+  llm_spend_today_usd: number;
+  llm_daily_budget_usd: number;
+  active_sessions: number;
+  max_sessions: number;
+}
+
 export type ProbeOutcome = "allowed" | "blocked";
 
 export interface RbacProbeResult {
@@ -203,6 +276,10 @@ export const api = {
   health: (): Promise<HealthResponse> => request("/health"),
 
   fleetSummary: (): Promise<FleetSummary> => request("/fleet/summary"),
+
+  fleetRisk: (): Promise<RiskOverview> => request("/fleet/risk"),
+
+  systemStatus: (): Promise<SystemStatus> => request("/system/status"),
 
   chat: (message: string, sessionId: string | null): Promise<ChatResponse> =>
     request("/chat", {

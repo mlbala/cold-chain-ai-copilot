@@ -22,6 +22,16 @@ A LangGraph agent orchestrates these sources and routes each step between a chea
 | No record of who queried what. | Every model call and tool call lands in an append-only audit log. |
 | One expensive model for everything. | A hybrid router sends most calls to Flash and escalates to Pro only for SQL repair or multi-source synthesis. The savings are shown live. |
 
+## The control tower UI
+
+The UI is one React 19 page with three tabs under a live KPI ribbon: active fleet, excursions, weather holds and routing cost savings. It has light, dark and system themes, remembered per browser, and works down to phone width.
+
+| Tab | What it does |
+|---|---|
+| **Dispatch Console** | Chat with the copilot. Each answer carries SOP citation badges, a model-route summary (Flash → Pro), cost and copy. The expandable **execution trace** timeline shows every SQL query, weather payload and SOP chunk, with per-step latency. Beside the chat, the **Live Fleet** board offers filters, search, a temperature-vs-band gauge, battery meters and *Ask copilot* on any truck. |
+| **Risk & Health** | Risk mix and level counts, affected shipments with their risk factors, delayed shipments, and supply-chain impact by destination, origin or cargo. Below that: live **system health** for every dependency, model spend against the daily budget, and the **guardrail inventory** with activation counters. |
+| **Security Audit** | Password-gated. Runs the live RBAC penetration test (score ring, results by category) and pages through the immutable audit trail. |
+
 ## Architecture
 
 ```
@@ -122,7 +132,16 @@ You can check this live:
 4. **Margin-free view.** `vw_active_fleet` never projects `internal_margin_usd` and hides `DELIVERED` rows.
 5. **Immutable audit.** Triggers reject `UPDATE`, `DELETE` and `TRUNCATE` on `agent_audit_log` for every role, the owner included.
 6. **Live proof.** `POST /api/v1/audit/rbac-test` sends 13 fixed attack probes straight to PostgreSQL as `usr_fde_ro`, deliberately skipping layer 1. It reports pass or fail for each probe. Every probe runs in a transaction that is always rolled back.
-7. **Admin surface.** The audit endpoints require `X-Admin-Password`. It is compared in constant time, and a client is locked out after repeated failures.
+7. **Admin surface.** The audit endpoints require `X-Admin-Password`. It is compared in constant time, and a client is locked out after 5 failures in 5 minutes.
+8. **API guardrails on `/chat`.** These run before any model call, cheapest first:
+   - a per-client rate limit (`CHAT_RATE_LIMIT_PER_MINUTE`, HTTP 429);
+   - a daily model-spend cap (`LLM_DAILY_BUDGET_USD`, HTTP 429 until 00:00 UTC);
+   - a concurrency cap that protects the 1 GB host (`CHAT_MAX_CONCURRENT`, HTTP 503).
+
+   `X-Forwarded-For` is honoured only from `FORWARDED_ALLOW_IPS`, so clients cannot spoof their address to dodge limits.
+9. **Agent guardrails.** A per-turn tool budget, a cap on SQL repair attempts, a graph step limit, a session-memory cap, and the SOP citation contract in the static system prompt.
+
+The **Risk & Health** tab lists all 18 controls with their live settings and activation counters, served by `GET /api/v1/system/status`.
 
 ## Quickstart
 
@@ -167,6 +186,8 @@ For frontend development, run `make serve` in one terminal and `make frontend-de
 | `PINECONE_API_KEY`, `PINECONE_INDEX_NAME` | The serverless index (`fde-sop-index-openai`). `ingest-sops` creates it if missing. |
 | `ADMIN_AUDIT_PASSWORD` | Gates `/api/v1/audit/*`. |
 | `SQL_MAX_FIX_ATTEMPTS`, `SQL_ROW_LIMIT`, `SQL_STATEMENT_TIMEOUT_MS`, `AGENT_MAX_TOOL_CALLS` | Agent guardrails. |
+| `CHAT_RATE_LIMIT_PER_MINUTE`, `CHAT_MAX_CONCURRENT`, `LLM_DAILY_BUDGET_USD` | API guardrails on `/chat`: 12 per minute, 4 concurrent, $5 per day. A budget of `0` disables the cap. |
+| `FORWARDED_ALLOW_IPS`, `HEALTH_PROBE_TTL_SECONDS` | Trusted proxy addresses (default `127.0.0.1`) and the health-probe cache (default 60 s). |
 
 `.env.example` documents every variable.
 
@@ -179,8 +200,36 @@ For frontend development, run `make serve` in one terminal and `make frontend-de
 | `POST /api/v1/chat` | none | `{message, session_id?}` → answer, `trace_steps[]`, models used, token usage, cost. |
 | `POST /api/v1/audit/logs` | admin | Paginated, filterable audit trail. |
 | `POST /api/v1/audit/rbac-test` | admin | Live RBAC penetration test report. |
+| `GET /api/v1/fleet/risk` | none | Deterministic risk triage (score 0–100, level, factors) for every active shipment, plus supply-chain impact grouped by destination hub, origin hub and cargo class. No model call. |
+| `GET /api/v1/system/status` | none | Component health and the guardrail inventory with activation counters (details below). |
+
+Component health in `/system/status` covers both database roles, DeepSeek, OpenAI, Pinecone, Open-Meteo, the audit writer and session memory.
+- External services are probed with free, read-only calls (model listings, index stats, one forecast point).
+- Results are cached for `HEALTH_PROBE_TTL_SECONDS`.
+- No secrets or connection strings are returned.
 
 The KPI ribbon data covers active fleet, temperature excursions, weather alerts, low battery, open doors and routing cost savings.
+
+### Risk scoring
+
+Each active shipment gets a 0–100 score from SOP v4 thresholds:
+
+| Factor | Points |
+|---|---|
+| Temperature excursion | 35, plus 8 per °C outside the band (capped at +25), plus 15 for pharma |
+| Warm-side excursion on mRNA vaccines or blood plasma | Critical floor of 70 |
+| Weather hold | 20 |
+| Battery below 25 % / below 15 % | 15 / 30 |
+| Door open outside loading | 20 |
+| No ping for 20+ minutes, or 45+ for pharma | 10 / 15 |
+
+Levels:
+- **Critical**: 70 or more.
+- **High**: 40 or more.
+- **Elevated**: 15 or more.
+- **Normal**: below 15.
+
+The score is a fast triage signal. The copilot remains the authority for the cited response.
 
 Interactive docs are served at `/api/docs`.
 

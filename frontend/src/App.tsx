@@ -1,104 +1,121 @@
-import { MessageSquare, ShieldCheck, Snowflake } from "lucide-react";
+import { Gauge, MessageSquare, ShieldCheck, Snowflake } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { api } from "./api/client";
-import type { HealthResponse } from "./api/client";
 import AuditDashboard from "./components/AuditDashboard";
 import DispatchChat from "./components/DispatchChat";
+import FleetBoard from "./components/FleetBoard";
+import RiskHealthDashboard from "./components/RiskHealthDashboard";
 import TelemetryRibbon from "./components/TelemetryRibbon";
+import ThemeToggle from "./components/ThemeToggle";
+import { StatusDot } from "./components/ui";
+import { usePolling } from "./hooks/usePolling";
 
-type Tab = "dispatch" | "audit";
+type Tab = "dispatch" | "risk" | "audit";
 
-const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
-  { id: "dispatch", label: "Autonomous Dispatch Console", icon: MessageSquare },
-  { id: "audit", label: "Security Audit", icon: ShieldCheck },
+const TABS: { id: Tab; label: string; short: string; icon: LucideIcon }[] = [
+  { id: "dispatch", label: "Dispatch Console", short: "Dispatch", icon: MessageSquare },
+  { id: "risk", label: "Risk & Health", short: "Risk", icon: Gauge },
+  { id: "audit", label: "Security Audit", short: "Audit", icon: ShieldCheck },
 ];
 
+function tabFromHash(): Tab {
+  const hash = window.location.hash.replace("#", "");
+  return TABS.some((t) => t.id === hash) ? (hash as Tab) : "dispatch";
+}
+
 function HealthPill() {
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [reachable, setReachable] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function check() {
-      try {
-        const result = await api.health();
-        if (!cancelled) {
-          setHealth(result);
-          setReachable(true);
-        }
-      } catch {
-        if (!cancelled) setReachable(false);
-      }
-    }
-    void check();
-    const timer = window.setInterval(() => void check(), 60_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  const ok = reachable && health?.status === "ok";
-  const label = !reachable ? "API offline" : health ? (ok ? "All systems normal" : "Degraded") : "Checking…";
+  const health = usePolling(api.health, 60_000);
+  const ok = health.data?.status === "ok";
+  const state = health.error ? "down" : health.data ? (ok ? "ok" : "degraded") : "unknown";
+  const label = health.error ? "API offline" : health.data ? (ok ? "Operational" : "Degraded") : "Checking";
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${
-        ok ? "border-ok/40 text-ok" : "border-warn/40 text-warn"
-      }`}
-    >
-      <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-ok" : "bg-warn"}`} aria-hidden />
+    <span className="hidden items-center gap-2 rounded-full border border-line bg-surface px-2.5 py-1 text-xs text-fg-muted sm:inline-flex">
+      <StatusDot state={state} pulse={state !== "ok"} />
       {label}
-      {health ? <span className="text-ink-400">· v{health.version}</span> : null}
+      {health.data ? <span className="text-fg-subtle">v{health.data.version}</span> : null}
     </span>
   );
 }
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("dispatch");
-  const [ribbonKey, setRibbonKey] = useState(0);
+  const [tab, setTab] = useState<Tab>(tabFromHash);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [prefill, setPrefill] = useState<{ id: number; text: string } | null>(null);
+  const fleet = usePolling(api.fleetSummary, 30_000, refreshKey);
+
+  useEffect(() => {
+    const onHash = () => setTab(tabFromHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  const go = useCallback((next: Tab) => {
+    setTab(next);
+    if (window.location.hash !== `#${next}`) window.history.replaceState(null, "", `#${next}`);
+  }, []);
+
+  const ask = useCallback(
+    (text: string) => {
+      setPrefill({ id: Date.now(), text });
+      go("dispatch");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    [go],
+  );
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="rounded-lg border border-ink-700 bg-ink-900 p-2">
-            <Snowflake className="h-5 w-5 text-signal" aria-hidden />
+    <div className="min-h-dvh">
+      <header className="sticky top-0 z-30 border-b border-line bg-canvas/80 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-[1440px] items-center gap-2 px-4 sm:gap-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-pro text-white shadow-pop">
+              <Snowflake className="h-5 w-5" aria-hidden />
+            </div>
+            <div className="hidden min-w-0 sm:block">
+              <div className="truncate text-[14px] leading-tight font-semibold text-fg">Cold Chain Control Tower</div>
+              <div className="truncate text-[11px] text-fg-subtle">Telemetry · weather · SOP copilot</div>
+            </div>
           </div>
-          <div>
-            <h1 className="text-base font-semibold leading-tight">Cold Chain Control Tower</h1>
-            <p className="text-xs text-ink-400">Fleet telemetry · live weather · SOP copilot</p>
+
+          <nav aria-label="Workspace" className="mx-auto flex rounded-xl border border-line bg-surface-2 p-1">
+            {TABS.map(({ id, label, short, icon: Icon }) => {
+              const active = tab === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => go(id)}
+                  aria-current={active ? "page" : undefined}
+                  aria-label={label}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium whitespace-nowrap transition-colors sm:px-3 ${
+                    active ? "bg-surface text-fg shadow-card" : "text-fg-subtle hover:text-fg"
+                  }`}
+                >
+                  <Icon className={`h-4 w-4 ${active ? "text-accent" : ""}`} aria-hidden />
+                  <span className="hidden md:inline">{label}</span>
+                  <span className="hidden sm:inline md:hidden">{short}</span>
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <HealthPill />
+            <ThemeToggle />
           </div>
         </div>
-        <HealthPill />
       </header>
 
-      <TelemetryRibbon refreshKey={ribbonKey} />
+      <main className="mx-auto max-w-[1440px] space-y-5 px-4 py-5 sm:px-6">
+        <TelemetryRibbon state={fleet} />
 
-      <nav aria-label="Workspace" className="flex gap-1 overflow-x-auto rounded-xl border border-ink-700 bg-ink-900 p-1">
-        {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            aria-current={tab === id ? "page" : undefined}
-            className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm transition-colors ${
-              tab === id
-                ? "bg-ink-700 text-ink-100"
-                : "text-ink-400 hover:bg-ink-800 hover:text-ink-100"
-            }`}
-          >
-            <Icon className="h-4 w-4" aria-hidden />
-            {label}
-          </button>
-        ))}
-      </nav>
-
-      <main className="flex-1">
-        <div hidden={tab !== "dispatch"}>
-          <DispatchChat onTurnComplete={() => setRibbonKey((value) => value + 1)} />
+        <div hidden={tab !== "dispatch"} className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
+          <DispatchChat onTurnComplete={() => setRefreshKey((value) => value + 1)} prefill={prefill} />
+          <FleetBoard state={fleet} onAsk={ask} />
         </div>
+        {tab === "risk" ? <RiskHealthDashboard onAsk={ask} /> : null}
         {tab === "audit" ? <AuditDashboard /> : null}
       </main>
     </div>

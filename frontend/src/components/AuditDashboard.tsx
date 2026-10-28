@@ -3,9 +3,10 @@ import {
   ChevronRight,
   CircleCheck,
   CircleX,
+  FileClock,
   LoaderCircle,
   Lock,
-  LogOut,
+  LockOpen,
   Play,
   RefreshCw,
   ShieldCheck,
@@ -14,13 +15,27 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import { ApiError, api } from "../api/client";
-import type { AuditLogPage, RbacTestReport } from "../api/client";
+import type { AuditLogPage, RbacProbeResult, RbacTestReport } from "../api/client";
+import { Button, Card, CardHeader, EmptyState, Pill, ScoreRing } from "./ui";
+import type { Tone } from "./ui";
 
 const PAGE_SIZE = 25;
 const STATUS_FILTERS = ["", "ok", "error", "blocked", "rbac_violation", "retry_exhausted", "passed", "failed"];
+const CATEGORY_LABEL: Record<RbacProbeResult["category"], string> = {
+  read: "Read access",
+  write: "Write access",
+  ddl: "Schema changes",
+  privilege: "Privilege escalation",
+};
 
 function errorText(err: unknown): string {
   return err instanceof ApiError ? err.message : "Unexpected error";
+}
+
+function statusTone(status: string): Tone {
+  if (status === "ok" || status === "passed") return "ok";
+  if (status === "blocked" || status === "rbac_violation") return "warn";
+  return "danger";
 }
 
 function PasswordGate({ onUnlock }: { onUnlock: (password: string) => Promise<void> }) {
@@ -43,36 +58,38 @@ function PasswordGate({ onUnlock }: { onUnlock: (password: string) => Promise<vo
   }
 
   return (
-    <div className="panel mx-auto max-w-md p-6">
-      <div className="mb-4 flex items-center gap-2">
-        <Lock className="h-5 w-5 text-signal" aria-hidden />
-        <h2 className="text-sm font-semibold">Security Audit · admin access</h2>
-      </div>
-      <p className="mb-4 text-xs text-ink-400">
-        The audit trail and the live RBAC penetration test are restricted to administrators.
-      </p>
-      <form onSubmit={submit} className="space-y-3">
-        <label htmlFor="admin-password" className="block text-xs text-ink-300">
-          Admin password
-        </label>
-        <input
-          id="admin-password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          className="w-full rounded-lg border border-ink-700 bg-ink-950 px-3 py-2 text-sm focus:border-signal focus:outline-none"
-        />
-        {error ? <p className="text-xs text-danger">{error}</p> : null}
-        <button
-          type="submit"
-          disabled={busy || !password}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-signal-strong px-4 py-2 text-sm font-medium text-white hover:bg-signal disabled:opacity-40"
-        >
-          {busy ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : null}
-          Unlock
-        </button>
-      </form>
+    <div className="flex justify-center py-8">
+      <Card className="w-full max-w-md p-6">
+        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-accent to-pro text-white shadow-pop">
+          <Lock className="h-5 w-5" aria-hidden />
+        </div>
+        <h2 className="mt-4 text-center text-base font-semibold text-fg">Security Audit</h2>
+        <p className="mt-1 text-center text-xs text-fg-subtle">
+          The immutable audit trail and the live RBAC penetration test are restricted to administrators.
+        </p>
+        <form onSubmit={submit} className="mt-5 space-y-3">
+          <label htmlFor="admin-password" className="text-xs font-medium text-fg-muted">
+            Admin password
+          </label>
+          <input
+            id="admin-password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            className="h-10 w-full rounded-lg border border-line bg-surface-2 px-3 text-sm text-fg focus:border-accent focus:outline-none"
+          />
+          {error ? <p className="text-xs text-danger">{error}</p> : null}
+          <button
+            type="submit"
+            disabled={busy || !password}
+            className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-medium text-accent-fg hover:bg-accent-strong disabled:opacity-40"
+          >
+            {busy ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden /> : <LockOpen className="h-4 w-4" aria-hidden />}
+            Unlock
+          </button>
+        </form>
+      </Card>
     </div>
   );
 }
@@ -94,103 +111,91 @@ function PenTestPanel({ password }: { password: string }) {
     }
   }
 
+  const categories = report
+    ? (Object.keys(CATEGORY_LABEL) as RbacProbeResult["category"][]).filter((c) =>
+        report.results.some((r) => r.category === c),
+      )
+    : [];
+
   return (
-    <section className="panel" aria-label="Live RBAC penetration test">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-700 px-4 py-3">
-        <div>
-          <h3 className="flex items-center gap-2 text-sm font-semibold">
-            <ShieldCheck className="h-4 w-4 text-signal" aria-hidden />
-            Live RBAC Penetration Test
-          </h3>
-          <p className="text-xs text-ink-400">
-            Fixed attack probes sent straight to PostgreSQL as <code>usr_fde_ro</code>, bypassing the
-            app's SQL guard. Every probe is rolled back.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void run()}
-          disabled={running}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-signal-strong px-3 py-1.5 text-xs font-medium text-white hover:bg-signal disabled:opacity-40"
-        >
-          {running ? (
-            <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden />
-          ) : (
-            <Play className="h-3.5 w-3.5" aria-hidden />
-          )}
-          Run pen test
-        </button>
-      </header>
-
-      {error ? <p className="px-4 py-3 text-xs text-danger">{error}</p> : null}
-
+    <Card>
+      <CardHeader
+        icon={ShieldCheck}
+        title="Live RBAC penetration test"
+        subtitle={
+          <>
+            Fixed attack probes sent straight to PostgreSQL as <code className="font-mono">usr_fde_ro</code>, bypassing
+            the app's SQL guard. Every probe is rolled back.
+          </>
+        }
+        actions={
+          <Button variant="primary" size="sm" icon={running ? LoaderCircle : Play} onClick={() => void run()} disabled={running}>
+            {running ? "Running…" : "Run pen test"}
+          </Button>
+        }
+      />
+      {error ? <p className="px-5 py-3 text-xs text-danger">{error}</p> : null}
       {report ? (
-        <div className="space-y-3 p-4">
-          <div
-            className={`rounded-lg border px-3 py-2 text-sm ${
-              report.passed
-                ? "border-ok/40 bg-ok/10 text-ok"
-                : "border-danger/40 bg-danger/10 text-danger"
-            }`}
-          >
-            {report.passed_count}/{report.total} probes behaved as expected for role{" "}
-            <code>{report.role}</code> ·{" "}
-            {new Date(report.executed_at_utc).toLocaleString()}
+        <div className="space-y-4 p-4 sm:p-5">
+          <div className="flex flex-wrap items-center gap-4 rounded-xl border border-line bg-surface-2/60 p-4">
+            <ScoreRing
+              value={report.passed_count}
+              max={report.total}
+              tone={report.passed ? "ok" : "danger"}
+              size={72}
+              label={`${report.passed_count}/${report.total}`}
+            />
+            <div>
+              <div className={`text-sm font-semibold ${report.passed ? "text-ok" : "text-danger"}`}>
+                {report.passed ? "Least privilege holds" : "Unexpected access detected"}
+              </div>
+              <div className="mt-0.5 text-xs text-fg-subtle">
+                Role <code className="font-mono">{report.role}</code> · {new Date(report.executed_at_utc).toLocaleString()}
+              </div>
+            </div>
           </div>
-          <div className="overflow-x-auto rounded-lg border border-ink-700">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-ink-800 text-ink-300">
-                <tr>
-                  <th className="px-3 py-2">Result</th>
-                  <th className="px-3 py-2">Probe</th>
-                  <th className="px-3 py-2">Expected</th>
-                  <th className="px-3 py-2">Actual</th>
-                  <th className="px-3 py-2">Engine response</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.results.map((probe) => (
-                  <tr key={probe.probe_id} className="border-t border-ink-700 align-top">
-                    <td className="px-3 py-2">
-                      {probe.passed ? (
-                        <CircleCheck className="h-4 w-4 text-ok" aria-label="passed" />
-                      ) : (
-                        <CircleX className="h-4 w-4 text-danger" aria-label="failed" />
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="font-medium text-ink-100">{probe.title}</div>
-                      <code className="mt-1 block max-w-md whitespace-pre-wrap break-words font-mono text-[11px] text-ink-400">
-                        {probe.sql}
-                      </code>
-                    </td>
-                    <td className="px-3 py-2 uppercase text-ink-300">{probe.expected}</td>
-                    <td
-                      className={`px-3 py-2 uppercase ${
-                        probe.actual === "blocked" ? "text-ok" : "text-signal"
-                      }`}
-                    >
-                      {probe.actual}
-                    </td>
-                    <td className="px-3 py-2 text-ink-300">
-                      {probe.sqlstate ? (
-                        <span className="mr-1 font-mono text-ink-400">[{probe.sqlstate}]</span>
-                      ) : null}
-                      {probe.detail}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {categories.map((category) => (
+            <section key={category}>
+              <div className="label-caps mb-2">{CATEGORY_LABEL[category]}</div>
+              <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
+                {report.results
+                  .filter((r) => r.category === category)
+                  .map((probe) => (
+                    <li key={probe.probe_id} className="grid gap-2 bg-surface p-3 md:grid-cols-[1fr_auto]">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          {probe.passed ? (
+                            <CircleCheck className="h-4 w-4 shrink-0 text-ok" aria-label="passed" />
+                          ) : (
+                            <CircleX className="h-4 w-4 shrink-0 text-danger" aria-label="failed" />
+                          )}
+                          <span className="text-[13px] font-medium text-fg">{probe.title}</span>
+                        </div>
+                        <code className="mt-1 block truncate pl-6 font-mono text-[11px] text-fg-subtle" title={probe.sql}>
+                          {probe.sql}
+                        </code>
+                        <div className="mt-1 pl-6 text-[11.5px] text-fg-muted">
+                          {probe.sqlstate ? <span className="font-mono text-fg-subtle">[{probe.sqlstate}] </span> : null}
+                          {probe.detail}
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-1.5 pl-6 md:pl-0">
+                        <Pill tone="neutral">expect {probe.expected}</Pill>
+                        <Pill tone={probe.actual === "blocked" ? "ok" : "accent"}>{probe.actual}</Pill>
+                      </div>
+                    </li>
+                  ))}
+              </ul>
+            </section>
+          ))}
         </div>
       ) : !error ? (
-        <p className="px-4 py-4 text-xs text-ink-400">
-          Run the test to prove the database enforces read-only access to the view and append-only
-          access to the audit log.
-        </p>
+        <EmptyState icon={ShieldCheck} title="Prove least privilege live">
+          Run the test to show the database itself enforces read-only access to the view and append-only access to the
+          audit log.
+        </EmptyState>
       ) : null}
-    </section>
+    </Card>
   );
 }
 
@@ -205,13 +210,7 @@ function AuditLogTable({ password }: { password: string }) {
     setLoading(true);
     setError(null);
     try {
-      setPage(
-        await api.auditLogs(password, {
-          limit: PAGE_SIZE,
-          offset,
-          status: statusFilter || null,
-        }),
-      );
+      setPage(await api.auditLogs(password, { limit: PAGE_SIZE, offset, status: statusFilter || null }));
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -224,93 +223,72 @@ function AuditLogTable({ password }: { password: string }) {
   }, [load]);
 
   const total = page?.total ?? 0;
-  const first = total === 0 ? 0 : offset + 1;
-  const last = Math.min(offset + PAGE_SIZE, total);
-
   return (
-    <section className="panel" aria-label="Agent audit log">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-ink-700 px-4 py-3">
-        <div>
-          <h3 className="text-sm font-semibold">Immutable Audit Trail</h3>
-          <p className="text-xs text-ink-400">
-            <code>fde_views.agent_audit_log</code> · append-only, every model call and tool call
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <label htmlFor="status-filter" className="sr-only">
-            Filter by status
-          </label>
-          <select
-            id="status-filter"
-            value={statusFilter}
-            onChange={(event) => {
-              setOffset(0);
-              setStatusFilter(event.target.value);
-            }}
-            className="rounded-lg border border-ink-700 bg-ink-950 px-2 py-1.5 text-xs text-ink-100"
-          >
-            {STATUS_FILTERS.map((value) => (
-              <option key={value || "all"} value={value}>
-                {value ? `status: ${value}` : "all statuses"}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={() => void load()}
-            disabled={loading}
-            aria-label="Refresh audit log"
-            className="rounded-lg border border-ink-700 p-1.5 text-ink-300 hover:text-ink-100 disabled:opacity-40"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} aria-hidden />
-          </button>
-        </div>
-      </header>
-
-      {error ? <p className="px-4 py-3 text-xs text-danger">{error}</p> : null}
-
+    <Card>
+      <CardHeader
+        icon={FileClock}
+        title="Immutable audit trail"
+        subtitle={
+          <>
+            <code className="font-mono">fde_views.agent_audit_log</code> · append-only, every model and tool call
+          </>
+        }
+        actions={
+          <>
+            <select
+              aria-label="Filter by status"
+              value={statusFilter}
+              onChange={(event) => {
+                setOffset(0);
+                setStatusFilter(event.target.value);
+              }}
+              className="h-8 rounded-lg border border-line bg-surface-2 px-2 text-xs text-fg"
+            >
+              {STATUS_FILTERS.map((value) => (
+                <option key={value || "all"} value={value}>
+                  {value ? `status: ${value}` : "All statuses"}
+                </option>
+              ))}
+            </select>
+            <Button size="sm" icon={RefreshCw} onClick={() => void load()} disabled={loading} aria-label="Refresh audit log">
+              Refresh
+            </Button>
+          </>
+        }
+      />
+      {error ? <p className="px-5 py-3 text-xs text-danger">{error}</p> : null}
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs">
-          <thead className="bg-ink-800 text-ink-300">
+          <thead className="bg-surface-2 text-fg-muted">
             <tr>
-              <th className="px-3 py-2">Time (local)</th>
-              <th className="px-3 py-2">Session</th>
-              <th className="px-3 py-2">Node</th>
-              <th className="px-3 py-2">Model</th>
-              <th className="px-3 py-2">Tool</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2 text-right">Latency</th>
-              <th className="px-3 py-2">SQL / error</th>
+              {["Time", "Session", "Node", "Model", "Tool", "Status", "Latency", "SQL / error"].map((h) => (
+                <th key={h} className={`px-3 py-2 font-semibold whitespace-nowrap ${h === "Latency" ? "text-right" : ""}`}>
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {page?.entries.map((entry) => (
-              <tr key={entry.log_id} className="border-t border-ink-700 align-top">
-                <td className="whitespace-nowrap px-3 py-2 text-ink-300">
+              <tr key={entry.log_id} className="border-t border-line align-top hover:bg-surface-2/60">
+                <td className="px-3 py-2 whitespace-nowrap text-fg-muted tabular-nums">
                   {new Date(entry.timestamp_utc).toLocaleString()}
                 </td>
-                <td className="px-3 py-2 font-mono text-ink-400" title={entry.session_id}>
+                <td className="px-3 py-2 font-mono text-fg-subtle" title={entry.session_id}>
                   {entry.session_id.slice(0, 8)}
                 </td>
-                <td className="px-3 py-2">{entry.node_name}</td>
-                <td className="px-3 py-2 text-ink-300">{entry.model_used ?? "—"}</td>
-                <td className="px-3 py-2 text-ink-300">{entry.tool_called ?? "—"}</td>
-                <td
-                  className={`px-3 py-2 font-medium ${
-                    ["ok", "passed"].includes(entry.status) ? "text-ok" : "text-danger"
-                  }`}
-                >
-                  {entry.status}
+                <td className="px-3 py-2 text-fg">{entry.node_name}</td>
+                <td className="px-3 py-2 text-fg-muted">{entry.model_used ?? "—"}</td>
+                <td className="px-3 py-2 text-fg-muted">{entry.tool_called ?? "—"}</td>
+                <td className="px-3 py-2">
+                  <Pill tone={statusTone(entry.status)}>{entry.status}</Pill>
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums text-ink-300">
+                <td className="px-3 py-2 text-right text-fg-muted tabular-nums">
                   {entry.latency_ms !== null ? `${entry.latency_ms} ms` : "—"}
                 </td>
                 <td className="max-w-md px-3 py-2">
                   {entry.executed_sql ? (
-                    <code
-                      className="line-clamp-2 break-all font-mono text-[11px] text-ink-300"
-                      title={entry.executed_sql}
-                    >
+                    <code className="line-clamp-2 font-mono text-[11px] break-all text-fg-muted" title={entry.executed_sql}>
                       {entry.executed_sql}
                     </code>
                   ) : null}
@@ -322,43 +300,24 @@ function AuditLogTable({ password }: { password: string }) {
                 </td>
               </tr>
             ))}
-            {page && page.entries.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-3 py-6 text-center text-ink-400">
-                  No audit events yet. Run a copilot turn or the pen test.
-                </td>
-              </tr>
-            ) : null}
           </tbody>
         </table>
+        {page && page.entries.length === 0 ? (
+          <EmptyState icon={FileClock} title="No audit events yet">
+            Run a copilot turn or the pen test.
+          </EmptyState>
+        ) : null}
       </div>
-
-      <footer className="flex items-center justify-between gap-2 border-t border-ink-700 px-4 py-2 text-xs text-ink-400">
-        <span>
-          {first}–{last} of {total}
+      <div className="flex items-center justify-between gap-2 border-t border-line px-4 py-2.5 text-xs text-fg-subtle">
+        <span className="tabular-nums">
+          {total === 0 ? 0 : offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
         </span>
         <div className="flex gap-1">
-          <button
-            type="button"
-            onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-            disabled={offset === 0 || loading}
-            aria-label="Previous page"
-            className="rounded-lg border border-ink-700 p-1 disabled:opacity-40"
-          >
-            <ChevronLeft className="h-4 w-4" aria-hidden />
-          </button>
-          <button
-            type="button"
-            onClick={() => setOffset(offset + PAGE_SIZE)}
-            disabled={offset + PAGE_SIZE >= total || loading}
-            aria-label="Next page"
-            className="rounded-lg border border-ink-700 p-1 disabled:opacity-40"
-          >
-            <ChevronRight className="h-4 w-4" aria-hidden />
-          </button>
+          <Button size="sm" icon={ChevronLeft} aria-label="Previous page" disabled={offset === 0 || loading} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))} />
+          <Button size="sm" icon={ChevronRight} aria-label="Next page" disabled={offset + PAGE_SIZE >= total || loading} onClick={() => setOffset(offset + PAGE_SIZE)} />
         </div>
-      </footer>
-    </section>
+      </div>
+    </Card>
   );
 }
 
@@ -370,21 +329,17 @@ export default function AuditDashboard() {
     setPassword(candidate);
   }
 
-  if (password === null) {
-    return <PasswordGate onUnlock={unlock} />;
-  }
+  if (password === null) return <PasswordGate onUnlock={unlock} />;
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => setPassword(null)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-ink-700 px-2.5 py-1.5 text-xs text-ink-300 hover:text-ink-100"
-        >
-          <LogOut className="h-3.5 w-3.5" aria-hidden />
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <Pill tone="ok" icon={LockOpen}>
+          Admin session
+        </Pill>
+        <Button size="sm" icon={Lock} onClick={() => setPassword(null)}>
           Lock
-        </button>
+        </Button>
       </div>
       <PenTestPanel password={password} />
       <AuditLogTable password={password} />
