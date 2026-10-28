@@ -239,3 +239,6 @@ frontend/dist/
 
 # SOP ingestion manifest (local cache of what is in Pinecone)
 data/policy/.ingest_cache.json
+
+# Personal local helpers (never pushed)
+scripts/local/
