@@ -155,8 +155,10 @@ For frontend development, run `make serve` in one terminal and `make frontend-de
 
 | Variable | Purpose |
 |---|---|
-| `AIVEN_ADMIN_DB_URI` | `avnadmin` URI. Used for migrations, seeding and the admin audit viewer. |
-| `AIVEN_AGENT_RO_DB_URI` | URI for the agent role. The user **must** be `usr_fde_ro`, and `setup-rbac` sets its password from here. |
+| `AIVEN_HOST`, `AIVEN_PORT`, `AIVEN_DB_NAME`, `AIVEN_SSLMODE` | Aiven connection details, copied from the service Overview page. `AIVEN_SSLMODE` defaults to `require`. |
+| `AIVEN_ADMIN_USER`, `AIVEN_ADMIN_PASSWORD` | `avnadmin` credentials. Used only for migrations, seeding and the admin audit viewer. |
+| `AIVEN_AGENT_RO_USER`, `AIVEN_AGENT_RO_PASSWORD` | The agent role. The user **must** be `usr_fde_ro`. Choose the password (12+ characters), and `setup-rbac` creates the role with it. |
+| `AIVEN_ADMIN_DB_URI`, `AIVEN_AGENT_RO_DB_URI` | Optional alternative to the separate fields: full service URIs. Used only when `AIVEN_HOST` is unset. |
 | `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL` | DeepSeek's OpenAI-compatible endpoint (`https://api.deepseek.com/v1`). |
 | `DEEPSEEK_FLASH_MODEL`, `DEEPSEEK_PRO_MODEL` | Default to `deepseek-chat` and `deepseek-reasoner`. |
 | `FLASH_INPUT_PRICE_PER_M`, `PRO_INPUT_PRICE_PER_M` | USD per 1M input tokens (0.15 / 0.66). Output prices are optional. |

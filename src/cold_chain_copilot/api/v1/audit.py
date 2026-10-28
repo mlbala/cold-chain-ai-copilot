@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from urllib.parse import unquote, urlsplit
 
 import psycopg
 from fastapi import APIRouter, HTTPException, status
@@ -222,7 +221,7 @@ def _run_probe(conn: psycopg.Connection[tuple[object, ...]], probe: Probe) -> Rb
 def rbac_test(
     pools: PoolsDep, audit: AuditDep, settings: SettingsDep, _admin: AdminDep
 ) -> RbacTestReport:
-    admin_role = unquote(urlsplit(settings.secret("aiven_admin_db_uri")).username or "avnadmin")
+    admin_role = settings.db_params("admin").get("user") or "avnadmin"
     started = datetime.now(UTC)
     try:
         with pools.ro.connection(timeout=5.0) as conn:

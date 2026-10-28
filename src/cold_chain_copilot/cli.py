@@ -97,7 +97,7 @@ def ingest_db(
     settings = _settings()
     try:
         count = load_telemetry(
-            settings.secret("aiven_admin_db_uri"),
+            settings.conninfo("admin"),
             csv_path or settings.seed_csv_path,
             regenerate=regenerate,
             refresh_timestamps=refresh_timestamps,
