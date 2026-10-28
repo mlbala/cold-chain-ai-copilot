@@ -68,8 +68,12 @@ class Settings(BaseSettings):
 
     deepseek_api_key: SecretStr | None = None
     deepseek_base_url: str = "https://api.deepseek.com/v1"
-    deepseek_flash_model: str = "deepseek-chat"
-    deepseek_pro_model: str = "deepseek-reasoner"
+    deepseek_flash_model: str = "deepseek-flash"
+    deepseek_pro_model: str = "deepseek-v4-pro"
+    # V4 Pro "thinks" by default: ~7K hidden reasoning tokens and ~160 s per synthesis in
+    # testing, versus ~15 s with thinking disabled and an equivalent cited answer.
+    # "provider_default" sends no thinking parameter at all.
+    deepseek_pro_thinking: Literal["disabled", "enabled", "provider_default"] = "disabled"
     flash_input_price_per_m: float = Field(default=0.15, ge=0)
     pro_input_price_per_m: float = Field(default=0.66, ge=0)
     flash_output_price_per_m: float = Field(default=0.0, ge=0)

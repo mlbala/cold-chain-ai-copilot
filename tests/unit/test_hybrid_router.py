@@ -108,9 +108,7 @@ def test_sql_execution_error_escalates_to_pro_and_recovers(
     assert result.answer == "Recovered answer."
     assert result.escalated
     assert result.models_used == ["DeepSeek V4 Flash", "DeepSeek V4 Pro"]
-    assert any(
-        e.node_name == "sql_fix" and e.model_used == "deepseek-reasoner" for e in audit.events
-    )
+    assert any(e.node_name == "sql_fix" and e.model_used == "deepseek-v4-pro" for e in audit.events)
 
 
 def test_guard_block_also_escalates_to_pro(make_agent: AgentFactory) -> None:
@@ -237,3 +235,27 @@ def test_deepseek_native_cache_hit_field_is_read() -> None:
     message = ai("x")
     message.response_metadata = {"token_usage": {"prompt_cache_hit_tokens": 1536}}
     assert usage_from_message(message, FLASH_SPEC, PRO_SPEC).cached_tokens == 1536
+
+
+@pytest.mark.parametrize(
+    ("mode", "body"),
+    [
+        ("disabled", {"thinking": {"type": "disabled"}}),
+        ("enabled", {"thinking": {"type": "enabled"}}),
+        ("provider_default", None),
+    ],
+)
+def test_pro_thinking_switch(mode: str, body: dict[str, object] | None) -> None:
+    from pydantic import SecretStr
+
+    from cold_chain_copilot.agent.router import HybridModelRouter, pro_thinking_body
+    from cold_chain_copilot.core.config import Settings
+
+    assert pro_thinking_body(mode) == body
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        deepseek_api_key=SecretStr("sk-test"),
+        deepseek_pro_thinking=mode,  # type: ignore[arg-type]
+    )
+    router = HybridModelRouter.from_settings(settings, tools=[])
+    assert router._pro.extra_body == body  # type: ignore[attr-defined]

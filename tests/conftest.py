@@ -20,14 +20,14 @@ from cold_chain_copilot.db.audit import AuditEvent
 
 FLASH_SPEC = ModelSpec(
     tier="flash",
-    model_id="deepseek-chat",
+    model_id="deepseek-flash",
     label="DeepSeek V4 Flash",
     input_price_per_m=0.15,
     output_price_per_m=0.0,
 )
 PRO_SPEC = ModelSpec(
     tier="pro",
-    model_id="deepseek-reasoner",
+    model_id="deepseek-v4-pro",
     label="DeepSeek V4 Pro",
     input_price_per_m=0.66,
     output_price_per_m=0.0,

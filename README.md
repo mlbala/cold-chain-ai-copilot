@@ -48,8 +48,8 @@ The UI is one React 19 page with three tabs under a live KPI ribbon: active flee
                         ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │  Hybrid DeepSeek V4 router (src/cold_chain_copilot/agent/)             │
-│  ├── Flash  (deepseek-chat,     $0.15 / 1M in)  tool routing, SQL       │
-│  └── Pro    (deepseek-reasoner, $0.66 / 1M in)  SQL self-fix, synthesis │
+│  ├── Flash  (deepseek-flash,    $0.15 / 1M in)  tool routing, SQL       │
+│  └── Pro    (deepseek-v4-pro,   $0.66 / 1M in)  SQL self-fix, synthesis │
 └───────┬───────────────────────────────┬────────────────────────────────┘
         │ SQL (psycopg v3 pool)         │ semantic search
         ▼                               ▼
@@ -179,7 +179,8 @@ For frontend development, run `make serve` in one terminal and `make frontend-de
 | `AIVEN_AGENT_RO_USER`, `AIVEN_AGENT_RO_PASSWORD` | The agent role. The user **must** be `usr_fde_ro`. Choose the password (12+ characters), and `setup-rbac` creates the role with it. |
 | `AIVEN_ADMIN_DB_URI`, `AIVEN_AGENT_RO_DB_URI` | Optional alternative to the separate fields: full service URIs. Used only when `AIVEN_HOST` is unset. |
 | `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL` | DeepSeek's OpenAI-compatible endpoint (`https://api.deepseek.com/v1`). |
-| `DEEPSEEK_FLASH_MODEL`, `DEEPSEEK_PRO_MODEL` | Default to `deepseek-chat` and `deepseek-reasoner`. |
+| `DEEPSEEK_FLASH_MODEL`, `DEEPSEEK_PRO_MODEL` | Default to `deepseek-flash` and `deepseek-v4-pro`, the IDs DeepSeek's `/models` lists. System health flags any configured ID the API doesn't list. |
+| `DEEPSEEK_PRO_THINKING` | `disabled` (default), `enabled` or `provider_default`. With thinking on, V4 Pro spent about 160 s and about 7K hidden reasoning tokens per synthesis in testing; with it off, about 15 s for an equivalent cited answer. |
 | `FLASH_INPUT_PRICE_PER_M`, `PRO_INPUT_PRICE_PER_M` | USD per 1M input tokens (0.15 / 0.66). Output prices are optional. |
 | `FLASH_CACHED_INPUT_PRICE_PER_M`, `PRO_CACHED_INPUT_PRICE_PER_M` | Optional cache-hit prices. When unset, cache hits bill at the full input price. |
 | `OPENAI_API_KEY` | Embeddings (`text-embedding-3-small`, 1536 dimensions). |
