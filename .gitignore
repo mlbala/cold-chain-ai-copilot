@@ -218,3 +218,27 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local AI tooling and environments
+.claude/
+.cursor/
+.venv/
+.fdevenv/
+
+# Secrets (keep the template)
+.env.*
+!.env.example
+
+# Frontend
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# OS
+.DS_Store
+
+# SOP ingestion manifest (local cache of what is in Pinecone)
+data/policy/.ingest_cache.json
+
+# Personal local helpers (never pushed)
+scripts/local/
