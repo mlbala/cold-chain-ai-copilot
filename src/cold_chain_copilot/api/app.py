@@ -15,12 +15,13 @@ from starlette.types import Scope
 
 from cold_chain_copilot import __version__
 from cold_chain_copilot.agent.graph import build_copilot
-from cold_chain_copilot.api.dependencies import AppRuntime, RuntimeDep
+from cold_chain_copilot.api.dependencies import AppRuntime, ChatGuards, RuntimeDep
 from cold_chain_copilot.api.schemas import HealthResponse
 from cold_chain_copilot.api.v1 import api_router
 from cold_chain_copilot.core.config import Settings, get_settings
 from cold_chain_copilot.core.exceptions import ConfigurationError
 from cold_chain_copilot.core.logging import configure_logging, get_logger
+from cold_chain_copilot.core.metrics import metrics
 from cold_chain_copilot.db.audit import AuditLogger
 from cold_chain_copilot.db.pool import DatabasePools
 
@@ -67,6 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         settings.require_serving_config()
+        metrics.reset()
         pools = DatabasePools.from_settings(settings)
         pools.open()
         audit = AuditLogger(pools.ro)
@@ -74,7 +76,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             copilot = build_copilot(settings, pools.ro, audit)
             app.state.runtime = AppRuntime(
-                settings=settings, pools=pools, audit=audit, copilot=copilot
+                settings=settings,
+                pools=pools,
+                audit=audit,
+                copilot=copilot,
+                guards=ChatGuards.from_settings(settings),
             )
             logger.info(
                 "startup_complete",

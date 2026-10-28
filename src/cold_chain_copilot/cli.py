@@ -56,7 +56,7 @@ def serve(
         reload=reload,
         workers=1,
         proxy_headers=True,
-        forwarded_allow_ips="*",
+        forwarded_allow_ips=settings.forwarded_allow_ips,
         log_config=None,
         server_header=False,
     )

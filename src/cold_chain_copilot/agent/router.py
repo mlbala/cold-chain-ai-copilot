@@ -18,6 +18,7 @@ import threading
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, date, datetime
 from typing import Literal
 
 from langchain_core.language_models import BaseChatModel, LanguageModelInput
@@ -91,11 +92,26 @@ class CostLedger:
         self._lock = threading.Lock()
         self._calls: dict[ModelTier, int] = {"flash": 0, "pro": 0}
         self._usage = TokenUsage()
+        self._day: date = datetime.now(UTC).date()
+        self._day_cost = 0.0
 
     def record(self, tier: ModelTier, usage: TokenUsage) -> None:
         with self._lock:
             self._calls[tier] += 1
             self._usage = self._usage + usage
+            self._roll_day()
+            self._day_cost += usage.cost_usd
+
+    def spent_today(self) -> float:
+        """Model spend (USD) since 00:00 UTC, for the daily budget guardrail."""
+        with self._lock:
+            self._roll_day()
+            return self._day_cost
+
+    def _roll_day(self) -> None:
+        today = datetime.now(UTC).date()
+        if today != self._day:
+            self._day, self._day_cost = today, 0.0
 
     def snapshot(self) -> LedgerSnapshot:
         with self._lock:

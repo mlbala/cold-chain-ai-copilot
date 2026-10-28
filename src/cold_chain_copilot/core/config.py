@@ -100,6 +100,13 @@ class Settings(BaseSettings):
     agent_max_tool_calls: int = Field(default=10, ge=1, le=20)
     history_turns: int = Field(default=4, ge=1, le=20)
 
+    # API guardrails
+    chat_rate_limit_per_minute: int = Field(default=12, ge=1, le=600)
+    chat_max_concurrent: int = Field(default=4, ge=1, le=32)
+    llm_daily_budget_usd: float = Field(default=5.0, ge=0)  # 0 disables the cap
+    forwarded_allow_ips: str = "127.0.0.1"  # proxies trusted for X-Forwarded-For
+    health_probe_ttl_seconds: float = Field(default=60.0, ge=5, le=3600)
+
     data_dir: Path = Path("data")
     frontend_dist: Path = Path("frontend/dist")
 

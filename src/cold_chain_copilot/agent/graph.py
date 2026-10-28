@@ -64,6 +64,7 @@ from cold_chain_copilot.agent.tools.weather_meteo import OpenMeteoClient, build_
 from cold_chain_copilot.core.config import Settings
 from cold_chain_copilot.core.exceptions import SQLRetryExhaustedError
 from cold_chain_copilot.core.logging import get_logger
+from cold_chain_copilot.core.metrics import metrics
 from cold_chain_copilot.db.audit import AuditEvent, AuditSink
 
 logger = get_logger(__name__)
@@ -167,7 +168,7 @@ class CopilotAgent:
         self._tools = {t.name: t for t in tools}
         self._audit = audit
         self._history_turns = history_turns
-        self._max_sessions = max_sessions
+        self.max_sessions = max_sessions
         self._checkpointer = MemorySaver()
         self._sessions: OrderedDict[str, threading.Lock] = OrderedDict()
         self._sessions_lock = threading.Lock()
@@ -262,6 +263,7 @@ class CopilotAgent:
                 latency_ms = int((time.perf_counter() - started) * 1000)
                 executed += 1
 
+            self._record_tool_metrics(outcome)
             replies.append(
                 ToolMessage(
                     content=outcome.content,
@@ -325,6 +327,7 @@ class CopilotAgent:
         try:
             self.router.ensure_fix_budget(state)
         except SQLRetryExhaustedError as exc:
+            metrics.increment("sql_retry_exhausted")
             steps = [
                 *state["trace_steps"],
                 self._step(
@@ -386,6 +389,7 @@ class CopilotAgent:
             ),
         ]
         call = self._llm_step(state, "sql_fix", "sql_fix", lambda: self.router.call_pro(prompt))
+        metrics.increment("sql_repairs")
         attempts = state["sql_fix_attempts"] + 1
         fixed_sql = extract_sql(call.message.text)
         steps = [
@@ -461,6 +465,29 @@ class CopilotAgent:
 
     # --- Helpers --------------------------------------------------------------------------
 
+    @staticmethod
+    def _record_tool_metrics(outcome: ToolOutcome) -> None:
+        """Guardrail counters and dependency health from one tool result."""
+        code = outcome.error_code
+        if code == "SQL_GUARD_BLOCKED":
+            metrics.increment("sql_guard_blocks")
+        elif code == "RBAC_VIOLATION":
+            metrics.increment("rbac_violations")
+        elif outcome.error == "tool budget exhausted":
+            metrics.increment("tool_budget_exhausted")
+            return
+        dependency = {
+            SQL_TOOL_NAME: "database",
+            WEATHER_TOOL_NAME: "open_meteo",
+            SOP_TOOL_NAME: "pinecone",
+        }.get(outcome.tool_name)
+        if dependency == "database":
+            metrics.record_dependency("database", code != "DATABASE_UNAVAILABLE", code)
+        elif dependency == "open_meteo":
+            metrics.record_dependency("open_meteo", outcome.status == "ok", code)
+        elif dependency == "pinecone":
+            metrics.record_dependency("pinecone", outcome.status == "ok", code)
+
     def _execute_tool(self, call: ToolCall) -> ToolOutcome:
         selected = self._tools.get(call["name"])
         if selected is None:
@@ -507,6 +534,7 @@ class CopilotAgent:
         try:
             call = invoke()
         except Exception as exc:
+            metrics.record_dependency("deepseek", False, exc.__class__.__name__)
             self._audit.log(
                 AuditEvent(
                     session_id=state["session_id"],
@@ -518,6 +546,7 @@ class CopilotAgent:
                 )
             )
             raise
+        metrics.record_dependency("deepseek", True)
         self._audit.log(
             AuditEvent(
                 session_id=state["session_id"],
@@ -576,12 +605,17 @@ class CopilotAgent:
                 lock = threading.Lock()
                 self._sessions[session_id] = lock
             self._sessions.move_to_end(session_id)
-            while len(self._sessions) > self._max_sessions:
+            while len(self._sessions) > self.max_sessions:
                 evicted, _ = self._sessions.popitem(last=False)
                 self._checkpointer.delete_thread(evicted)
         return lock
 
     # --- Public API -----------------------------------------------------------------------
+
+    @property
+    def active_sessions(self) -> int:
+        with self._sessions_lock:
+            return len(self._sessions)
 
     def run_turn(self, message: str, session_id: str | None = None) -> TurnResult:
         session_id = session_id or uuid4().hex

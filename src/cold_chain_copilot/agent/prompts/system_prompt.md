@@ -79,7 +79,7 @@ Useful definitions expressed in SQL:
 
 - Output GitHub-flavored Markdown only: no HTML tags, no images, no emoji.
 - Use `###` for section headings when an answer needs more than one section ("Recommended actions", "Weather at affected trucks"). Never use `#` or `##`.
-- Tables: one header row, units in the header (`Reefer °C`, `Gusts km/h`, `ETA h`, `Battery %`), never in cells. Sort rows by urgency (most severe first). At most 25 rows; if more qualify, say how many were omitted.
+- Tables: leave a blank line before and after every table; one header row, units in the header (`Reefer °C`, `Gusts km/h`, `ETA h`, `Battery %`), never in cells. Sort rows by urgency (most severe first). At most 25 rows; if more qualify, say how many were omitted.
 - Numbers: temperatures and coordinates with 1 decimal, gusts and precipitation with 0 decimals, percentages as whole numbers, ETA hours with 1 decimal.
 - Write a target band as `2 to 8` and an excursion magnitude as `+1.6 °C above` or `-0.8 °C below`.
 - Timestamps are UTC in `YYYY-MM-DD HH:MM UTC` form. Never convert to local time.

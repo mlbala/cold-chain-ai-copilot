@@ -16,9 +16,17 @@ from psycopg_pool import PoolTimeout
 from pydantic import SecretStr
 
 from cold_chain_copilot.api.app import create_app
-from cold_chain_copilot.api.dependencies import AppRuntime, admin_limiter, get_runtime
+from cold_chain_copilot.api.dependencies import (
+    AppRuntime,
+    ChatGuards,
+    admin_limiter,
+    get_runtime,
+)
+from cold_chain_copilot.api.schemas import ComponentStatus
+from cold_chain_copilot.api.v1 import system
 from cold_chain_copilot.api.v1.fleet import KPI_SQL, SHIPMENTS_SQL
 from cold_chain_copilot.core.config import Settings
+from cold_chain_copilot.core.metrics import metrics
 from tests.conftest import AgentFactory, ai, sql_call
 
 ADMIN_PASSWORD = "correct-horse-battery-staple"
@@ -85,6 +93,10 @@ class FakePools:
 
 
 class ListAudit:
+    running = True
+    pending = 0
+    dropped = 0
+
     def __init__(self) -> None:
         self.events: list[Any] = []
 
@@ -109,8 +121,14 @@ def make_settings(tmp_path: Path) -> Settings:
 @pytest.fixture
 def client_factory(tmp_path: Path, make_agent: AgentFactory) -> Any:
     admin_limiter.reset("testclient")
+    metrics.reset()
 
-    def build(*, down: bool = False, flash: list[Any] | None = None) -> TestClient:
+    def build(
+        *,
+        down: bool = False,
+        flash: list[Any] | None = None,
+        guards: ChatGuards | None = None,
+    ) -> TestClient:
         settings = make_settings(tmp_path)
         app = create_app(settings)
         runtime = AppRuntime(
@@ -118,6 +136,7 @@ def client_factory(tmp_path: Path, make_agent: AgentFactory) -> Any:
             pools=FakePools(down=down),  # type: ignore[arg-type]
             audit=ListAudit(),  # type: ignore[arg-type]
             copilot=make_agent(flash or [ai("Fleet is nominal.")]),
+            guards=guards or ChatGuards.create(),
         )
         app.dependency_overrides[get_runtime] = lambda: runtime
         return TestClient(app)
@@ -201,3 +220,81 @@ def test_admin_lockout_after_repeated_failures(client_factory: Any) -> None:
 
 def test_rbac_test_requires_admin_password(client_factory: Any) -> None:
     assert client_factory().post("/api/v1/audit/rbac-test").status_code == 401
+
+
+def test_chat_rate_limit_returns_429_before_any_model_call(client_factory: Any) -> None:
+    client = client_factory(
+        flash=[ai("one"), ai("two"), ai("three")], guards=ChatGuards.create(per_minute=2)
+    )
+    for _ in range(2):
+        assert client.post("/api/v1/chat", json={"message": "hi"}).status_code == 200
+    limited = client.post("/api/v1/chat", json={"message": "hi"})
+    assert limited.status_code == 429
+    assert int(limited.headers["retry-after"]) > 0
+    assert metrics.counts()["chat_rate_limited"] == 1
+    assert metrics.counts()["chat_turns"] == 2
+
+
+def test_daily_budget_blocks_new_turns(client_factory: Any) -> None:
+    client = client_factory(
+        flash=[ai("spent"), ai("never")], guards=ChatGuards.create(daily_budget_usd=0.0001)
+    )
+    assert client.post("/api/v1/chat", json={"message": "first"}).status_code == 200
+    blocked = client.post("/api/v1/chat", json={"message": "second"})
+    assert blocked.status_code == 429
+    assert "budget" in blocked.json()["detail"]
+    assert metrics.counts()["llm_budget_blocked"] == 1
+
+
+def test_concurrency_cap_returns_503(client_factory: Any) -> None:
+    guards = ChatGuards.create(max_concurrent=1)
+    client = client_factory(guards=guards)
+    assert guards.slots.acquire(blocking=False)
+    try:
+        busy = client.post("/api/v1/chat", json={"message": "hi"})
+    finally:
+        guards.slots.release()
+    assert busy.status_code == 503
+    assert client.post("/api/v1/chat", json={"message": "hi"}).status_code == 200
+
+
+def test_fleet_risk_scores_and_groups(client_factory: Any) -> None:
+    body = client_factory().get("/api/v1/fleet/risk").json()
+    top = body["shipments"][0]
+    assert top["shipment_id"] == "SHP-24004"
+    assert top["risk_level"] == "critical"
+    assert {f["code"] for f in top["factors"]} >= {"temp_excursion", "door_open"}
+    assert body["totals"]["critical"] == 1
+    assert body["by_destination"][0]["name"] == "Atlanta, GA"
+    assert body["pharma_at_risk"] == 1
+
+
+def test_system_status_reports_components_and_guardrails(
+    client_factory: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fake(key: str) -> Any:
+        return lambda settings: ComponentStatus(key=key, name=key, status="ok", detail="fine")
+
+    monkeypatch.setattr(system, "EXTERNAL_PROBES", {k: fake(k) for k in system.EXTERNAL_PROBES})
+    system.probe_cache.clear()
+    body = client_factory().get("/api/v1/system/status").json()
+
+    assert body["status"] == "ok"
+    keys = [c["key"] for c in body["components"]]
+    assert keys[:2] == ["database_agent", "database_admin"]
+    assert {"deepseek", "openai", "pinecone", "open_meteo", "audit_writer", "memory"} <= set(keys)
+    guardrails = {g["key"]: g for g in body["guardrails"]}
+    assert len(guardrails) == 18
+    assert guardrails["chat_rate"]["triggered"] == 0
+    assert guardrails["llm_budget"]["setting"] == "$5.00 per UTC day"
+    assert "secret" not in str(body).lower()
+    assert body["counters"]["chat_turns"] == 0
+    system.probe_cache.clear()
+
+
+def test_system_status_is_down_when_database_is_down(
+    client_factory: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(system, "EXTERNAL_PROBES", {})
+    body = client_factory(down=True).get("/api/v1/system/status").json()
+    assert body["status"] == "down"
