@@ -97,7 +97,7 @@ class Settings(BaseSettings):
     sql_max_fix_attempts: int = Field(default=2, ge=0, le=5)
     sql_row_limit: int = Field(default=200, ge=1, le=1000)
     sql_statement_timeout_ms: int = Field(default=5000, ge=100, le=60000)
-    agent_max_tool_calls: int = Field(default=6, ge=1, le=20)
+    agent_max_tool_calls: int = Field(default=10, ge=1, le=20)
     history_turns: int = Field(default=4, ge=1, le=20)
 
     data_dir: Path = Path("data")

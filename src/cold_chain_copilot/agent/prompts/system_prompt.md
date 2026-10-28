@@ -53,6 +53,13 @@ Useful definitions expressed in SQL:
 - Use the truck's `current_lat` and `current_lon` from the view; never invent coordinates.
 - Call weather for each shipment the dispatcher needs a decision on (excursions, weather delays, or a named truck). If more than five trucks qualify, prioritize the most severe and say which ones you checked.
 - Report gusts and precipitation with units, then let the SOP thresholds decide whether caution or a hold applies.
+- Whenever you request weather, request `search_sop` for the weather thresholds (wind gusts, precipitation, ambient temperature) in the same step, so every reading can be classified against policy.
+- Request all the weather checks you need in one step instead of spreading them across several.
+
+# Tool budget
+
+- A turn allows a limited number of tool calls. Plan them: one SQL query that returns every column you need, one combined SOP search per topic, and one weather call per truck.
+- Never repeat an SOP search with a near-identical query in the same turn; one query can cover related policy questions (for example "excursion severity, response SLAs, and quality hold").
 
 # SOP citation contract
 

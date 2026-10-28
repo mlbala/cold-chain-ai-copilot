@@ -70,15 +70,15 @@ START → agent (Flash) ──tool calls──▶ tools ──SQL failure──�
   - **SQL self-correction.** This covers a guard block, an RBAC denial or an execution error, bounded by `SQL_MAX_FIX_ATTEMPTS`. Pro returns corrected SQL, which goes back through the same guard and the same read-only role.
   - **Final synthesis.** This applies when the answer reconciles two or more evidence sources, such as telemetry plus weather plus SOP.
 - Pro never calls tools, so the reasoning model stays off the tool-calling path.
-- **Prefix caching.** The system prompt (`agent/prompts/system_prompt.md`, about 1,500 tokens) is fully static and always sent first. That lets DeepSeek's automatic prefix cache serve it on repeated calls. Dynamic context (the current time) is appended after it.
+- **Prefix caching.** The system prompt (`agent/prompts/system_prompt.md`, about 1,970 tokens) is fully static and always sent first. That lets DeepSeek's automatic prefix cache serve it on repeated calls. Dynamic context (the current time) is appended after it.
 
 ## FinOps: routing and caching math
 
-Two levers set the model bill. **Routing** sends most calls to Flash, at $0.15 per 1M input tokens instead of Pro's $0.66. **Prefix caching** comes from the static ~1,825-token system prompt, which leads every call, so DeepSeek can serve it from cache. The figures below come from this repository's own payloads, measured with `cl100k_base` as an approximation of DeepSeek's tokenizer:
+Two levers set the model bill. **Routing** sends most calls to Flash, at $0.15 per 1M input tokens instead of Pro's $0.66. **Prefix caching** comes from the static ~1,970-token system prompt, which leads every call, so DeepSeek can serve it from cache. The figures below come from this repository's own payloads, measured with `cl100k_base` as an approximation of DeepSeek's tokenizer:
 
 | Component | Tokens |
 |---|---|
-| Static system prompt (cached prefix) | 1,825 |
+| Static system prompt (cached prefix) | 1,966 |
 | Tool schemas (Flash calls only) | 544 |
 | SQL result, 4 excursion rows | 426 |
 | SOP top-4 excursion chunks | 1,360 |
@@ -90,18 +90,18 @@ The examples below price input tokens only, which matches the app's default `*_O
 
 | Turn type | Calls (Flash / Pro) | Input tokens (Flash / Pro) | All-Pro | Hybrid | Hybrid + cache |
 |---|---|---|---|---|---|
-| Simple lookup (Flash only) | 2 / 0 | 5,148 / 0 | $0.00340 | $0.00077 (−77 %) | $0.00028 (−92 %) |
-| Multi-source audit: SQL + SOP + 4× weather, then Pro synthesis | 3 / 1 | 13,063 / 6,055 | $0.01262 | $0.00596 (−53 %) | $0.00413 (−67 %) |
-| SQL repair: Flash, then Pro fix, then Flash | 2 / 1 | 5,464 / 2,075 | $0.00498 | $0.00219 (−56 %) | $0.00061 (−88 %) |
+| Simple lookup (Flash only) | 2 / 0 | 5,430 / 0 | $0.00358 | $0.00081 (−77 %) | $0.00028 (−92 %) |
+| Multi-source audit: SQL + SOP + 4× weather, then Pro synthesis | 3 / 1 | 13,486 / 6,196 | $0.01299 | $0.00611 (−53 %) | $0.00415 (−68 %) |
+| SQL repair: Flash, then Pro fix, then Flash | 2 / 1 | 5,746 / 2,216 | $0.00525 | $0.00232 (−56 %) | $0.00063 (−88 %) |
 
 **Per 1,000 turns**, with a mix of 60 % simple, 30 % multi-source and 10 % repair:
-- All-Pro costs **$6.32**.
-- Hybrid routing costs **$2.47**, a 61 % saving.
-- Hybrid plus prefix caching costs **$1.47**, a 77 % saving.
+- All-Pro costs **$6.57**.
+- Hybrid routing costs **$2.55**, a 61 % saving.
+- Hybrid plus prefix caching costs **$1.48**, a 78 % saving.
 
-That mix makes 2,300 of 2,700 calls Flash, which is the **85 % Flash share**. The system prompt alone is about 51 % of all input tokens, which is why keeping it byte-identical and first matters.
+That mix makes 2,300 of 2,700 calls Flash, which is the **85 % Flash share**. The system prompt alone is about 53 % of all input tokens, which is why keeping it byte-identical and first matters.
 
-These are conservative figures. Within a turn, each Flash call also reuses the previous call's prompt as a prefix, so real cache-hit rates run higher.
+The "+ cache" column assumes a **warm cache**. DeepSeek caches a prefix only after it has seen it, so the first calls after a deploy, a prompt change or a cache expiry pay full price. Measured on the live stack, the multi-source audit ("Audit active temperature excursions": 1 SQL query, 3 SOP searches, 4 weather checks, Pro synthesis) used 26.5 K input tokens. 39 % were cache hits, and it cost $0.0087 against $0.0175 all-Pro (−50 %). That is more tokens than the estimate above, because the model ran extra SOP searches and wrote a draft for Pro. Under steady traffic the rate rises toward the system prompt's share, and higher still because each Flash call reuses the previous call's prompt as a prefix.
 
 You can check this live:
 - The trace drawer shows prompt, cached and completion tokens plus cost for every step.
