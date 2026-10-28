@@ -1,0 +1,122 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink-950: #070b12;
+  --color-ink-900: #0b111b;
+  --color-ink-850: #0f1724;
+  --color-ink-800: #141d2c;
+  --color-ink-700: #1d2839;
+  --color-ink-600: #2a3850;
+  --color-ink-400: #7d8ca3;
+  --color-ink-300: #a3b1c6;
+  --color-ink-100: #e4ebf5;
+  --color-signal: #38bdf8;
+  --color-signal-strong: #0ea5e9;
+  --color-ok: #34d399;
+  --color-warn: #fbbf24;
+  --color-danger: #fb7185;
+  --color-pro: #a78bfa;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-ink-950 text-ink-100 font-sans antialiased;
+    min-height: 100dvh;
+  }
+
+  ::selection {
+    background: rgb(56 189 248 / 0.3);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-signal);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-xl border border-ink-700 bg-ink-900/80;
+  }
+
+  .code-block {
+    @apply overflow-x-auto rounded-lg border border-ink-700 bg-ink-950 p-3 font-mono text-xs leading-relaxed text-ink-300;
+  }
+
+  .markdown {
+    @apply text-sm leading-relaxed text-ink-100;
+  }
+  .markdown > * + * {
+    @apply mt-3;
+  }
+  .markdown h1,
+  .markdown h2,
+  .markdown h3 {
+    @apply font-semibold text-ink-100;
+  }
+  .markdown h1 {
+    @apply text-lg;
+  }
+  .markdown h2 {
+    @apply text-base;
+  }
+  .markdown h3 {
+    @apply text-sm uppercase tracking-wide text-ink-300;
+  }
+  .markdown ul {
+    @apply list-disc space-y-1 pl-5;
+  }
+  .markdown ol {
+    @apply list-decimal space-y-1 pl-5;
+  }
+  .markdown strong {
+    @apply font-semibold text-white;
+  }
+  .markdown a {
+    @apply text-signal underline underline-offset-2;
+  }
+  .markdown code {
+    @apply rounded bg-ink-800 px-1 py-0.5 font-mono text-[0.8em] text-signal;
+  }
+  .markdown pre {
+    @apply overflow-x-auto rounded-lg border border-ink-700 bg-ink-950 p-3;
+  }
+  .markdown pre code {
+    @apply bg-transparent p-0 text-ink-300;
+  }
+  .markdown .table-wrap {
+    @apply overflow-x-auto rounded-lg border border-ink-700;
+  }
+  .markdown table {
+    @apply w-full border-collapse text-left text-xs;
+  }
+  .markdown thead {
+    @apply bg-ink-800 text-ink-300;
+  }
+  .markdown th,
+  .markdown td {
+    @apply whitespace-nowrap border-b border-ink-700 px-3 py-2;
+  }
+  .markdown tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  .markdown tbody tr:hover {
+    @apply bg-ink-800/60;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
