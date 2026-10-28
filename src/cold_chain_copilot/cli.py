@@ -114,18 +114,32 @@ def ingest_sops(
     policy_dir: Annotated[
         Path | None, typer.Option(help="Policy directory (default: data/policy).")
     ] = None,
+    ignore_cache: Annotated[
+        bool,
+        typer.Option(
+            "--ignore-cache",
+            help="Ignore .ingest_cache.json and re-diff every file against Pinecone "
+            "(still embeds only missing chunks).",
+        ),
+    ] = False,
 ) -> None:
-    """Chunk, hash, embed, and upsert SOP documents into Pinecone (unchanged chunks skipped)."""
+    """Chunk, hash, embed, and upsert SOP documents into Pinecone (unchanged files skipped)."""
+    from openai import OpenAIError
+    from pinecone.exceptions import PineconeException
+
     from cold_chain_copilot.ingestion.sop_indexer import SopIndexer
 
     settings = _settings()
     try:
         report = SopIndexer.from_settings(settings).sync_directory(
             policy_dir or settings.policy_dir,
+            use_cache=not ignore_cache,
             on_file=lambda path: typer.echo(f"indexing {path.name}"),
         )
     except CopilotError as exc:
         raise _fail(str(exc), code=2) from exc
+    except (OpenAIError, PineconeException, TimeoutError) as exc:
+        raise _fail(f"{exc.__class__.__name__}: {exc}") from exc
     stats = report.as_dict()
     typer.secho(
         "SOP index synced: " + ", ".join(f"{key}={value}" for key, value in stats.items()),

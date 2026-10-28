@@ -63,9 +63,26 @@ Applies to: all temperature-controlled road shipments dispatched from company hu
 
 4.4 An excursion is closed only after three consecutive in-band readings at least 5 minutes apart.
 
+4.5 **Excursion response SLAs**. The clock starts at the first out-of-band telemetry ping, not when a person notices the alert. Missing any SLA is itself recorded in the QMS as a process deviation.
+
+| Required action                               | Severity 1   | Severity 2 | Severity 3 |
+|-----------------------------------------------|--------------|------------|------------|
+| Dispatcher acknowledges the alert             | 15 minutes   | 5 minutes  | 2 minutes  |
+| Driver contacted; reefer, setpoint, door checked | 30 minutes | 15 minutes | 10 minutes |
+| QMS excursion record opened                   | End of shift | 15 minutes | 10 minutes |
+| Customer Quality contact notified             | Not required | 15 minutes | 10 minutes |
+| Back in band, or diversion under way          | 60 minutes   | 45 minutes | 30 minutes |
+| Quality hold placed                           | Not required | If unresolved at 45 minutes | Immediately |
+
 ## 5. Reefer Equipment, Doors, and Power
 
-5.1 **Door discipline**: reefer doors may be open only during loading or unloading at a dock with an active cold curtain. A door reported OPEN while the shipment is IN_TRANSIT, AT_HUB without dock assignment, or DELAYED_WEATHER is a Severity 2 event even if temperature is still in band.
+5.1 **Door protocol**:
+   a) Reefer doors may be opened only at an assigned dock with an active cold curtain or dock seal, for loading, unloading, or a dispatcher-approved inspection.
+   b) Maximum door-open time per event: 5 minutes for frozen cargo (mRNA Vaccines, Blood Plasma, Frozen Seafood, Ice Cream); 10 minutes for 2 to 8 °C pharma cargo (Vaccines, Biologics, Insulin); 15 minutes for all other chilled cargo.
+   c) The reefer unit stays running while doors are open. Continuous-run mode (no start/stop cycling) is mandatory for pharma-grade cargo for the whole trip.
+   d) After closing, the driver applies a numbered seal and records the seal number in the driver app. A seal-number mismatch at any later check is a suspected tampering event (Section 8).
+   e) A door reported OPEN while the shipment is IN_TRANSIT, AT_HUB without a dock assignment, or DELAYED_WEATHER is a Severity 2 event even if the temperature is still in band. If it is still OPEN 10 minutes after the dispatcher's instruction to close it, it becomes Severity 3.
+   f) A door-open event that exceeds the limit in 5.1 b) requires a temperature check within 15 minutes of closing, recorded in the QMS.
 
 5.2 **Battery thresholds** (reefer and telematics unit):
    a) Below 25 %: warning. The dispatcher confirms with the driver that the unit is on engine or shore power and schedules a charge stop within 2 hours.

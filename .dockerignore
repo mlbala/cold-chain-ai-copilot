@@ -21,3 +21,4 @@ tests
 .DS_Store
 Dockerfile
 .dockerignore
+data/policy/.ingest_cache.json

@@ -1,25 +1,38 @@
-"""SOP ingestion: polymorphic chunking, SHA-256 content cache, Pinecone Serverless upsert.
+"""SOP ingestion: polymorphic chunking, SHA-256 caching, OpenAI embeddings, Pinecone upsert.
 
-Vector IDs are `<file>#<sha256(chunk)[:24]>`. Before embedding, the indexer lists the IDs
-already stored under each file's prefix: chunks whose hash is present are skipped (no
-embedding cost), new chunks are embedded and upserted, and IDs that no longer match any
-chunk are deleted. Re-running on unchanged files therefore embeds nothing.
+Two cache layers keep re-runs cheap and the index exact:
+
+1. **Local manifest** (`data/policy/.ingest_cache.json`): the SHA-256 of every indexed file
+   plus the vector IDs it produced. A file whose bytes are unchanged is skipped with no
+   OpenAI or Pinecone calls at all.
+2. **Content-addressed vector IDs** (`<file>#<sha256(chunk)[:24]>`): for a changed file,
+   the IDs already in Pinecone are listed under the file's prefix. Only chunks that are not
+   there yet are embedded, and IDs that no longer match a chunk are deleted. Pinecone stays
+   the source of truth, so a lost or stale manifest never causes duplicate embeddings.
+
+Files that disappear from the policy directory have their vectors deleted and their manifest
+entry dropped.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 import re
+import tempfile
 import time
 import warnings
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 from openai import OpenAI
 from pinecone import Pinecone, ServerlessSpec
+from pydantic import BaseModel, Field, ValidationError
 from pypdf import PdfReader
 
 from cold_chain_copilot.core.config import Settings
@@ -38,6 +51,12 @@ _HASH_CHARS = 24
 _METADATA_TEXT_LIMIT = 30_000
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+
+CACHE_FILENAME = ".ingest_cache.json"
+MANIFEST_VERSION = 1
+# Bump whenever chunking or embedding-input formatting changes: it invalidates every
+# manifest entry so files are re-diffed against Pinecone.
+CHUNKER_VERSION = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +91,8 @@ class SopChunk:
 @dataclass(slots=True)
 class IndexReport:
     files: int = 0
+    files_unchanged: int = 0
+    files_removed: int = 0
     chunks: int = 0
     embedded: int = 0
     skipped: int = 0
@@ -80,11 +101,88 @@ class IndexReport:
     def as_dict(self) -> dict[str, int]:
         return {
             "files": self.files,
+            "files_unchanged": self.files_unchanged,
+            "files_removed": self.files_removed,
             "chunks": self.chunks,
             "embedded": self.embedded,
             "skipped": self.skipped,
             "deleted": self.deleted,
         }
+
+
+# --- Local manifest --------------------------------------------------------------------------
+
+
+class ManifestEntry(BaseModel):
+    file_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    chunk_ids: list[str]
+    indexed_at_utc: datetime
+
+
+class IngestManifest(BaseModel):
+    """What was last indexed, and against which index/model, keyed by file name."""
+
+    version: int = MANIFEST_VERSION
+    chunker_version: int = CHUNKER_VERSION
+    index_name: str
+    namespace: str
+    embedding_model: str
+    dimension: int
+    files: dict[str, ManifestEntry] = Field(default_factory=dict)
+
+    def matches(self, other: IngestManifest) -> bool:
+        """Same target index, namespace, model, and chunker: entries are reusable."""
+        return (
+            self.version,
+            self.chunker_version,
+            self.index_name,
+            self.namespace,
+            self.embedding_model,
+            self.dimension,
+        ) == (
+            other.version,
+            other.chunker_version,
+            other.index_name,
+            other.namespace,
+            other.embedding_model,
+            other.dimension,
+        )
+
+    @classmethod
+    def load(cls, path: Path, expected: IngestManifest) -> IngestManifest:
+        """Read the manifest; anything missing, corrupt, or for another target starts empty."""
+        if not path.is_file():
+            return expected
+        try:
+            stored = cls.model_validate_json(path.read_bytes())
+        except (OSError, ValidationError, ValueError) as exc:
+            logger.warning("sop_manifest_unreadable", path=str(path), error=str(exc))
+            return expected
+        if not stored.matches(expected):
+            logger.info("sop_manifest_invalidated", path=str(path), reason="target changed")
+            return expected
+        return stored
+
+    def save(self, path: Path) -> None:
+        """Atomic write (temp file + rename) so an interrupted run never corrupts it."""
+        payload = json.dumps(self.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=".ingest_cache.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(payload)
+            Path(tmp_name).replace(path)
+        except BaseException:
+            Path(tmp_name).unlink(missing_ok=True)
+            raise
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 16), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def id_prefix(source_file: str) -> str:
@@ -224,7 +322,9 @@ def discover_policy_files(policy_dir: Path) -> list[Path]:
     return sorted(
         path
         for path in policy_dir.iterdir()
-        if path.is_file() and path.suffix.lower() in SUPPORTED_SUFFIXES
+        if path.is_file()
+        and not path.name.startswith(".")
+        and path.suffix.lower() in SUPPORTED_SUFFIXES
     )
 
 
@@ -316,17 +416,30 @@ class SopIndexer:
             ids.update(item.id for item in page if item.id)
         return ids
 
-    def sync_file(self, path: Path, report: IndexReport) -> None:
+    def _expected_manifest(self) -> IngestManifest:
+        return IngestManifest(
+            index_name=self._index_name,
+            namespace=self._namespace,
+            embedding_model=self._embedding_model,
+            dimension=self._dimension,
+        )
+
+    def _delete_ids(self, ids: Sequence[str]) -> None:
+        index = self._pc.Index(self._index_name)
+        for id_batch in _batched(ids, UPSERT_BATCH_SIZE):
+            index.delete(ids=list(id_batch), namespace=self._namespace)
+
+    def sync_file(self, path: Path, report: IndexReport) -> list[str]:
+        """Diff one file's chunks against Pinecone; return the file's current vector IDs."""
         chunks = chunk_file(path)
-        prefix = id_prefix(path.name)
-        existing = self._existing_ids(prefix)
+        existing = self._existing_ids(id_prefix(path.name))
         wanted = {chunk.vector_id: chunk for chunk in chunks}
 
         fresh = [chunk for vector_id, chunk in wanted.items() if vector_id not in existing]
         stale = sorted(existing - wanted.keys())
-        index = self._pc.Index(self._index_name)
 
         if fresh:
+            index = self._pc.Index(self._index_name)
             embeddings = self.embed([chunk.embedding_input() for chunk in fresh])
             vectors = [
                 {"id": chunk.vector_id, "values": values, "metadata": chunk.metadata()}
@@ -334,8 +447,7 @@ class SopIndexer:
             ]
             for batch in _batched(vectors, UPSERT_BATCH_SIZE):
                 index.upsert(vectors=list(batch), namespace=self._namespace, show_progress=False)
-        for id_batch in _batched(stale, UPSERT_BATCH_SIZE):
-            index.delete(ids=list(id_batch), namespace=self._namespace)
+        self._delete_ids(stale)
 
         report.files += 1
         report.chunks += len(wanted)
@@ -350,24 +462,55 @@ class SopIndexer:
             skipped=len(wanted) - len(fresh),
             deleted=len(stale),
         )
+        return sorted(wanted)
 
     def sync_directory(
         self,
         policy_dir: Path,
+        *,
+        use_cache: bool = True,
         on_file: Callable[[Path], None] | None = None,
     ) -> IndexReport:
+        """Bring the index in line with `policy_dir`.
+
+        With `use_cache=False` every file is re-diffed against Pinecone (still embedding only
+        chunks that are missing), which repairs an index that was edited out of band.
+        """
         self.ensure_index()
+        manifest_path = policy_dir / CACHE_FILENAME
+        manifest = IngestManifest.load(manifest_path, self._expected_manifest())
         report = IndexReport()
-        for path in discover_policy_files(policy_dir):
+        present = discover_policy_files(policy_dir)
+
+        for path in present:
+            digest = file_sha256(path)
+            entry = manifest.files.get(path.name)
+            if use_cache and entry is not None and entry.file_sha256 == digest:
+                report.files += 1
+                report.files_unchanged += 1
+                report.chunks += len(entry.chunk_ids)
+                report.skipped += len(entry.chunk_ids)
+                logger.info("sop_file_unchanged", file=path.name, chunks=len(entry.chunk_ids))
+                continue
             if on_file is not None:
                 on_file(path)
-            self.sync_file(path, report)
+            chunk_ids = self.sync_file(path, report)
+            manifest.files[path.name] = ManifestEntry(
+                file_sha256=digest, chunk_ids=chunk_ids, indexed_at_utc=datetime.now(UTC)
+            )
+            manifest.save(manifest_path)
+
+        present_names = {path.name for path in present}
+        for removed in sorted(set(manifest.files) - present_names):
+            ids = sorted(
+                self._existing_ids(id_prefix(removed)) | set(manifest.files[removed].chunk_ids)
+            )
+            self._delete_ids(ids)
+            del manifest.files[removed]
+            report.files_removed += 1
+            report.deleted += len(ids)
+            logger.info("sop_file_removed", file=removed, deleted=len(ids))
+
+        manifest.save(manifest_path)
+        logger.info("sop_index_synced", **report.as_dict())
         return report
-
-
-def index_sops(settings: Settings) -> IndexReport:
-    """Entry point for `fde-copilot ingest-sops`."""
-    indexer = SopIndexer.from_settings(settings)
-    report = indexer.sync_directory(settings.policy_dir)
-    logger.info("sop_index_synced", **report.as_dict())
-    return report

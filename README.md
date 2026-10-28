@@ -112,7 +112,7 @@ For frontend development, run `make serve` in one terminal and `make frontend-de
 |---|---|
 | `fde-copilot setup-rbac` | Creates or re-keys `usr_fde_ro`, then applies `001_security_setup.sql` in a single transaction. Idempotent. |
 | `fde-copilot ingest-db` | Generates `data/raw/fleet_telemetry.csv` if it is missing (25 rows: 25 active, 4 excursions, 2 weather delays). Validates every row and batch-upserts into `public.legacy_fleet_shipments`. Pings are rebased to "now". |
-| `fde-copilot ingest-sops` | Chunks `data/policy/*` (`.md`, `.txt`, `.pdf`, `.csv`, `.xlsx`), embeds only new chunks (SHA-256 IDs) and deletes stale ones. A re-run on unchanged files embeds 0 chunks. |
+| `fde-copilot ingest-sops` | Chunks `data/policy/*` (`.md`, `.txt`, `.pdf`, `.csv`, `.xlsx`) and embeds with `text-embedding-3-small`. Files whose SHA-256 matches the local manifest `data/policy/.ingest_cache.json` are skipped with no API calls. Changed files embed only new chunks (content-addressed IDs) and delete stale ones. Removed files have their vectors deleted. `--ignore-cache` re-diffs every file against Pinecone. |
 | `fde-copilot serve` | Uvicorn with a single worker, JSON logs in production. |
 
 ### Environment

@@ -236,3 +236,6 @@ frontend/dist/
 
 # OS
 .DS_Store
+
+# SOP ingestion manifest (local cache of what is in Pinecone)
+data/policy/.ingest_cache.json
