@@ -36,15 +36,26 @@ _CSP = (
 
 
 class SPAStaticFiles(StaticFiles):
-    """Serves the built SPA and falls back to index.html for client-side routes."""
+    """Serves the built SPA and falls back to index.html for client-side routes.
+
+    Vite fingerprints every file under `assets/`, so those are cached for a year and a missing
+    one is a real 404. Falling back to index.html there would hand the browser HTML for a script,
+    which it refuses to run, leaving a blank page after a redeploy. Everything else, index.html
+    included, is revalidated on each load so a new build shows up immediately.
+    """
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         try:
-            return await super().get_response(path, scope)
+            response = await super().get_response(path, scope)
         except StarletteHTTPException as exc:
-            if exc.status_code != 404 or path.startswith("api/"):
+            if exc.status_code != 404 or path.startswith(("api/", "assets/")):
                 raise
-            return await super().get_response("index.html", scope)
+            response = await super().get_response("index.html", scope)
+        immutable = path.startswith("assets/")
+        response.headers.setdefault(
+            "Cache-Control", "public, max-age=31536000, immutable" if immutable else "no-cache"
+        )
+        return response
 
 
 async def _security_headers(

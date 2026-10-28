@@ -118,7 +118,7 @@ export default function App() {
       <main className="mx-auto max-w-[1440px] space-y-5 px-4 py-5 sm:px-6">
         <TelemetryRibbon state={fleet} />
 
-        <div hidden={tab !== "dispatch"} className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
+        <div hidden={tab !== "dispatch"} className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
           <DispatchChat onTurnComplete={() => setRefreshKey((value) => value + 1)} prefill={prefill} />
           <FleetBoard state={fleet} onAsk={ask} />
         </div>

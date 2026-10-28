@@ -11,11 +11,12 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from psycopg_pool import PoolTimeout
 from pydantic import SecretStr
 
-from cold_chain_copilot.api.app import create_app
+from cold_chain_copilot.api.app import _mount_spa, create_app
 from cold_chain_copilot.api.dependencies import (
     AppRuntime,
     ChatGuards,
@@ -298,3 +299,27 @@ def test_system_status_is_down_when_database_is_down(
     monkeypatch.setattr(system, "EXTERNAL_PROBES", {})
     body = client_factory(down=True).get("/api/v1/system/status").json()
     assert body["status"] == "down"
+
+
+def test_spa_revalidates_html_and_never_serves_html_for_a_missing_asset(tmp_path: Path) -> None:
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text('<script type="module" src="/assets/app-new.js"></script>')
+    (dist / "assets" / "app-new.js").write_text("export {};")
+    app = FastAPI()
+    _mount_spa(app, dist)
+    client = TestClient(app)
+
+    for path in ("/", "/risk"):  # the page itself and a client-side route
+        page = client.get(path)
+        assert page.status_code == 200
+        assert page.headers["cache-control"] == "no-cache"
+        assert "app-new.js" in page.text
+
+    asset = client.get("/assets/app-new.js")
+    assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert "javascript" in asset.headers["content-type"]
+
+    stale = client.get("/assets/app-old.js")  # requested by a page cached before a redeploy
+    assert stale.status_code == 404
+    assert "<script" not in stale.text

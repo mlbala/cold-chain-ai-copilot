@@ -375,6 +375,8 @@ export default function DispatchChat({
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
+    // Nothing to follow on first load; scrolling then would push the KPI ribbon off screen.
+    if (turns.length === 0) return;
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [turns, pending]);
 
